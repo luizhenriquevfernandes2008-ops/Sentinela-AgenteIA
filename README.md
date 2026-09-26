@@ -1,6 +1,9 @@
 # Sentinela — agente de IA com controle humano
 
 [![testes](https://github.com/luizhenriquevfernandes2008-ops/Sentinela-AgenteIA/actions/workflows/testes.yml/badge.svg)](https://github.com/luizhenriquevfernandes2008-ops/Sentinela-AgenteIA/actions/workflows/testes.yml)
+[![online](https://img.shields.io/badge/demonstra%C3%A7%C3%A3o-online-0e6f7f)](https://sentinela-4h76.onrender.com)
+
+**▶ Experimente online: <https://sentinela-4h76.onrender.com>** (modo simulado, sem instalar nada; o primeiro acesso pode levar cerca de um minuto)
 
 Projeto de estudo, feito com a ajuda de IA, para aprender na prática como **integrar IA em projetos reais**
 usando **Python** e **SQL**.
@@ -102,6 +105,8 @@ teste confere o que seria enviado à Anthropic. Os testes também rodam no GitHu
 ---
 
 ## Publicar online (Render, plano gratuito)
+
+A demonstração oficial está em <https://sentinela-4h76.onrender.com>. Para publicar a sua própria cópia:
 
 O repositório já traz o `render.yaml`, que configura tudo sozinho. A versão online roda sempre no
 **modo simulado**, então não gasta nada nem expõe chave nenhuma.
