@@ -3,116 +3,177 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sentinela</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232f5bd3'/><circle cx='16' cy='16' r='7' fill='none' stroke='white' stroke-width='3'/><circle cx='16' cy='16' r='2' fill='white'/></svg>">
+  <title>Sentinela · Agente de IA com controle humano</title>
+  <meta name="description" content="Agente de IA que opera uma loja fictícia pela API, com aprovação humana, regras de segurança e auditoria.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2 4 7v8c0 7.4 5.1 13.4 12 15 6.9-1.6 12-7.6 12-15V7L16 2z' fill='%230e6f7f'/><path d='m11 16 3.5 3.5L21.5 12' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <link rel="stylesheet" href="/static/painel.css">
 </head>
 <body>
-  <header class="topo">
-    <div>
-      <h1>Sentinela</h1>
-      <p class="sub">Agente de IA com controle humano · Loja Exemplo</p>
-    </div>
-    <div class="topo-acoes">
-      <span id="modo" class="selo">…</span>
-      <span id="estado-agente" class="selo">…</span>
-      <button id="btn-pausa" class="botao perigo">Pausar agente</button>
+  <header class="barra">
+    <div class="container barra-conteudo">
+      <a class="marca" href="/" aria-label="Sentinela, início">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M16 2 4 7v8c0 7.4 5.1 13.4 12 15 6.9-1.6 12-7.6 12-15V7L16 2z" fill="currentColor"/>
+          <path d="m11 16 3.5 3.5L21.5 12" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>
+          <strong>Sentinela</strong>
+          <small>Agente de IA com controle humano</small>
+        </span>
+      </a>
+      <div class="barra-acoes">
+        <button id="btn-como-funciona" class="link" type="button">Como funciona</button>
+        <span id="modo" class="chip">…</span>
+        <span id="estado-agente" class="status"><i></i><span>…</span></span>
+        <button id="btn-pausa" class="botao" type="button">Pausar agente</button>
+      </div>
     </div>
   </header>
 
-  <section class="metricas" id="metricas"></section>
+  <main class="container">
+    <section class="intro" id="intro" hidden>
+      <button class="fechar" id="btn-fechar-intro" type="button" aria-label="Fechar apresentação">×</button>
+      <div class="intro-texto">
+        <p class="kicker">Projeto de estudo · IA aplicada na prática</p>
+        <h1>Um agente de IA que opera sistemas de verdade, sob o seu controle.</h1>
+        <p>O Sentinela recebe tarefas em português, consulta e altera uma loja fictícia pela API dela e passa cada ação por regras de segurança. O que é sensível só acontece depois que você aprova.</p>
+      </div>
+      <ol class="passos">
+        <li>
+          <span class="passo-num">1</span>
+          <strong>Você pede</strong>
+          <span>Escreva uma tarefa ou clique em um exemplo, como “Cancele o pedido 1003”.</span>
+        </li>
+        <li>
+          <span class="passo-num">2</span>
+          <strong>O agente age</strong>
+          <span>Ele consulta e age na loja pela API, passo a passo, e tudo fica registrado.</span>
+        </li>
+        <li>
+          <span class="passo-num">3</span>
+          <strong>Você decide</strong>
+          <span>Cancelar, reembolsar e enviar e-mail esperam sua aprovação. Regras bloqueiam o que passa do limite.</span>
+        </li>
+      </ol>
+    </section>
 
-  <main class="grade">
-    <div class="coluna">
-      <section class="cartao">
-        <h2>Nova tarefa</h2>
-        <form id="form-tarefa">
-          <textarea id="tarefa" rows="3" placeholder="Ex.: Cancele o pedido 1003 e avise o cliente" required></textarea>
-          <div class="exemplos" id="exemplos"></div>
-          <button class="botao primario" type="submit">Enviar ao agente</button>
-          <p id="erro-tarefa" class="erro" hidden></p>
-        </form>
-      </section>
+    <section class="metricas" id="metricas" aria-label="Resumo"></section>
 
-      <section class="cartao" id="cartao-aprovacoes">
-        <h2>Aprovações pendentes <span id="qtd-aprovacoes" class="contador">0</span></h2>
-        <div id="aprovacoes"></div>
-      </section>
+    <div class="grade">
+      <div class="coluna">
+        <section class="cartao">
+          <h2>Nova tarefa</h2>
+          <form id="form-tarefa">
+            <textarea id="tarefa" rows="3" placeholder="Ex.: Cancele o pedido 1003 e avise o cliente" required></textarea>
+            <p class="dica">Exemplos para experimentar:</p>
+            <div class="exemplos" id="exemplos"></div>
+            <div class="form-rodape">
+              <p id="erro-tarefa" class="erro" hidden></p>
+              <button class="botao primario" type="submit">Enviar ao agente</button>
+            </div>
+          </form>
+        </section>
 
-      <section class="cartao">
-        <h2>Execuções</h2>
-        <div id="execucoes" class="lista"></div>
-      </section>
+        <section class="cartao" id="cartao-aprovacoes">
+          <h2>Aguardando sua aprovação <span id="qtd-aprovacoes" class="contador">0</span></h2>
+          <div id="aprovacoes"></div>
+        </section>
+
+        <section class="cartao">
+          <h2>Histórico</h2>
+          <div id="execucoes" class="lista"></div>
+        </section>
+      </div>
+
+      <div class="coluna">
+        <section class="cartao fixo" id="cartao-detalhe">
+          <div class="linha-titulo">
+            <h2 id="titulo-detalhe">Linha do tempo</h2>
+            <button id="btn-cancelar-exec" class="botao pequeno perigo" type="button" hidden>Cancelar execução</button>
+          </div>
+          <div id="detalhe">
+            <div class="vazio-grande">
+              <p><strong>Nada selecionado</strong></p>
+              <p>Envie uma tarefa ou escolha uma no histórico para ver cada passo do agente.</p>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
 
-    <div class="coluna">
-      <section class="cartao" id="cartao-detalhe">
-        <div class="linha-titulo">
-          <h2 id="titulo-detalhe">Linha do tempo</h2>
-          <button id="btn-cancelar-exec" class="botao pequeno" hidden>Cancelar execução</button>
+    <section class="secao-abas">
+      <div class="abas" role="tablist">
+        <button class="aba ativa" data-aba="controles" role="tab" type="button">Controles</button>
+        <button class="aba" data-aba="loja" role="tab" type="button">Loja</button>
+      </div>
+
+      <div class="cartao" id="aba-controles">
+        <div class="controles-grade">
+          <div>
+            <h3>Ferramentas do agente</h3>
+            <p class="dica">Desligue uma ferramenta para bloqueá-la, ou exija aprovação antes de cada uso.</p>
+            <div class="rolagem">
+              <table class="tabela" id="tabela-ferramentas">
+                <thead><tr><th>Ferramenta</th><th>Risco</th><th>Ativa</th><th>Aprovação</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3>Limites</h3>
+            <p class="dica">Valem sempre, mesmo se o modelo for enganado.</p>
+            <label class="campo">Reembolso máximo do agente (R$)
+              <input type="number" id="limite_reembolso" min="0" step="50">
+            </label>
+            <label class="campo">Máximo de passos por tarefa
+              <input type="number" id="max_passos" min="1" max="50">
+            </label>
+            <label class="campo">Orçamento diário de tokens
+              <input type="number" id="orcamento_tokens_dia" min="0" step="10000">
+            </label>
+            <label class="campo linha">
+              <input type="checkbox" class="switch" id="email_somente_clientes">
+              E-mails só para clientes cadastrados
+            </label>
+            <div class="form-rodape">
+              <span id="salvo" class="ok" hidden>Salvo ✓</span>
+              <button id="btn-salvar-limites" class="botao primario" type="button">Salvar limites</button>
+            </div>
+          </div>
         </div>
-        <div id="detalhe"><p class="vazio">Selecione uma execução para ver cada passo do agente.</p></div>
-      </section>
-    </div>
+      </div>
+
+      <div class="cartao" id="aba-loja" hidden>
+        <div class="linha-titulo">
+          <div>
+            <h3>Pedidos</h3>
+            <p class="dica">O efeito real das ações do agente aparece aqui.</p>
+          </div>
+          <button id="btn-resetar" class="botao pequeno" type="button">Restaurar demonstração</button>
+        </div>
+        <div class="rolagem"><table class="tabela" id="tabela-pedidos"></table></div>
+        <div class="controles-grade">
+          <div>
+            <h3>Produtos</h3>
+            <div class="rolagem"><table class="tabela" id="tabela-produtos"></table></div>
+          </div>
+          <div>
+            <h3>E-mails enviados</h3>
+            <div id="lista-emails" class="lista"></div>
+            <h3>Reembolsos</h3>
+            <div class="rolagem"><table class="tabela" id="tabela-reembolsos"></table></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <nav class="abas" role="tablist">
-    <button class="aba ativa" data-aba="controles" role="tab">Controles</button>
-    <button class="aba" data-aba="loja" role="tab">Loja (efeito das ações)</button>
-  </nav>
-
-  <section class="cartao painel-aba" id="aba-controles">
-    <div class="controles-grade">
-      <div>
-        <h3>Ferramentas</h3>
-        <div class="rolagem">
-          <table class="tabela" id="tabela-ferramentas">
-            <thead><tr><th>Ferramenta</th><th>Risco</th><th>Ativa</th><th>Exige aprovação</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-      <div>
-        <h3>Limites</h3>
-        <label class="campo">Reembolso máximo do agente (R$)
-          <input type="number" id="limite_reembolso" min="0" step="50">
-        </label>
-        <label class="campo">Máximo de passos por execução
-          <input type="number" id="max_passos" min="1" max="50">
-        </label>
-        <label class="campo">Orçamento diário de tokens
-          <input type="number" id="orcamento_tokens_dia" min="0" step="10000">
-        </label>
-        <label class="campo check">
-          <input type="checkbox" id="email_somente_clientes"> E-mails só para clientes cadastrados
-        </label>
-        <button id="btn-salvar-limites" class="botao primario">Salvar limites</button>
-        <span id="salvo" class="ok" hidden>Salvo ✓</span>
-      </div>
+  <footer class="rodape">
+    <div class="container">
+      <p>Projeto de estudo feito com a ajuda de IA · Python, SQL (SQLite), FastAPI e Claude</p>
+      <p><a href="/docs">API do painel</a> · <a href="/loja/docs">API da loja</a> · <a href="https://github.com/luizhenriquevfernandes2008-ops/Sentinela-AgenteIA">Código no GitHub</a></p>
     </div>
-  </section>
-
-  <section class="cartao painel-aba" id="aba-loja" hidden>
-    <div class="linha-titulo">
-      <h3>Pedidos</h3>
-      <button id="btn-resetar-loja" class="botao pequeno">Restaurar dados de exemplo</button>
-    </div>
-    <div class="rolagem"><table class="tabela" id="tabela-pedidos"></table></div>
-    <div class="controles-grade">
-      <div>
-        <h3>Produtos</h3>
-        <div class="rolagem"><table class="tabela" id="tabela-produtos"></table></div>
-      </div>
-      <div>
-        <h3>E-mails enviados</h3>
-        <div id="lista-emails" class="lista"></div>
-        <h3>Reembolsos</h3>
-        <div class="rolagem"><table class="tabela" id="tabela-reembolsos"></table></div>
-      </div>
-    </div>
-  </section>
-
-  <footer class="rodape">Toda ação do agente passa pelas regras e fica registrada. A API da loja está em <a href="/loja/docs">/loja/docs</a>.</footer>
+  </footer>
 
   <script src="/static/painel.js"></script>
 </body>

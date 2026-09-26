@@ -1,0 +1,22 @@
+# Configuração para publicar no Render (https://render.com) com um clique.
+# No painel do Render: New > Blueprint > escolha este repositório.
+services:
+  - type: web
+    name: sentinela
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app
+    healthCheckPath: /api/status
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # Aceita conexões de fora do servidor (o Render informa a porta pela variável PORT).
+      - key: HOST
+        value: 0.0.0.0
+      # A demonstração pública roda sempre no modo simulado: sem chave, sem custo.
+      - key: MODO_AGENTE
+        value: simulado
+      # Chave da API da loja gerada pelo Render, em vez da chave de exemplo.
+      - key: LOJA_API_KEY
+        generateValue: true

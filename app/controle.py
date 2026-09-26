@@ -104,6 +104,13 @@ class Controle:
             self._conn.executescript(ESQUEMA)
             self._conn.commit()
 
+    def resetar(self) -> None:
+        """Apaga execuções, eventos e aprovações e volta os controles ao padrão."""
+        with self._trava:
+            for tabela in ("eventos", "aprovacoes", "execucoes", "controles"):
+                self._conn.execute(f"DELETE FROM {tabela}")
+            self._conn.commit()
+
     # ------------------------------------------------------------- controles
     def controles(self) -> dict[str, Any]:
         atuais = controles_padrao()

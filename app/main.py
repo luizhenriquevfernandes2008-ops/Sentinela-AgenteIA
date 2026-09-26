@@ -142,9 +142,11 @@ def criar_app(
             "reembolsos": loja.listar_reembolsos(),
         }
 
-    @app.post("/api/loja/resetar")
-    def resetar_loja() -> dict[str, str]:
+    @app.post("/api/demo/resetar")
+    def resetar_demo() -> dict[str, str]:
+        """Volta tudo ao estado inicial: loja, histórico e controles."""
         loja.resetar()
+        controle.resetar()
         return {"status": "ok"}
 
     # ------------------------------------------------------------------ painel

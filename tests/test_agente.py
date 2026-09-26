@@ -167,3 +167,13 @@ def test_metricas(cliente):
     assert m["execucoes"] == 1
     assert m["acoes_executadas"] == 1
     assert m["uso_por_ferramenta"] == {"buscar_produtos": 1}
+
+
+def test_restaurar_demo(cliente, app):
+    rodar(cliente, "Cancele o pedido 1003")
+    cliente.put("/api/controles", json={"max_passos": 3})
+    assert cliente.post("/api/demo/resetar").status_code == 200
+    assert cliente.get("/api/execucoes").json() == []
+    assert pendentes(cliente) == []
+    assert cliente.get("/api/controles").json()["max_passos"] == 10
+    assert app.state.loja.pedido(1003)["status"] == "pendente"
