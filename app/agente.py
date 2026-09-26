@@ -56,15 +56,15 @@ class Agente:
             return self._travas.setdefault(execucao_id, threading.Lock())
 
     # ------------------------------------------------------------------ início
-    def iniciar(self, tarefa: str) -> int:
+    def iniciar(self, tarefa: str, autor: str = "") -> int:
         tarefa = tarefa.strip()
         if not tarefa:
             raise ValueError("A tarefa não pode ser vazia.")
         if not self.controle.controles()["agente_ativo"]:
             raise AgentePausado("O agente está pausado pelo operador.")
-        eid = self.controle.criar_execucao(tarefa, self.modo, self.modelo)
+        eid = self.controle.criar_execucao(tarefa, self.modo, self.modelo, autor)
         self.controle.atualizar_execucao(eid, mensagens=[{"role": "user", "content": tarefa}])
-        self.controle.registrar(eid, "inicio", "Tarefa recebida", {"tarefa": tarefa})
+        self.controle.registrar(eid, "inicio", "Tarefa recebida", {"tarefa": tarefa, "por": autor})
         return eid
 
     # -------------------------------------------------------------------- laço
@@ -237,12 +237,12 @@ class Agente:
         return sorted(resultados, key=lambda r: ordem.get(r["tool_use_id"], 0))
 
     # --------------------------------------------------------------- aprovação
-    def decidir(self, aprovacao_id: int, aprovar: bool, comentario: str = "") -> tuple[int, bool]:
+    def decidir(self, aprovacao_id: int, aprovar: bool, comentario: str = "", por: str = "") -> tuple[int, bool]:
         """Registra a decisão humana. Retorna (execucao_id, pronta_para_continuar)."""
         ap = self.controle.aprovacao(aprovacao_id)
         eid = ap["execucao_id"]
         with self._trava(eid):
-            if not self.controle.decidir_aprovacao(aprovacao_id, aprovar, comentario):
+            if not self.controle.decidir_aprovacao(aprovacao_id, aprovar, comentario, por):
                 raise ValueError(f"A aprovação {aprovacao_id} já foi decidida.")
             ex = self.controle.execucao(eid)
             pend = ex["pendentes"]
@@ -250,7 +250,7 @@ class Agente:
             chamada = item["chamada"]
             if aprovar:
                 self.controle.registrar(
-                    eid, "aprovada", f"{chamada['name']} aprovada", {"ferramenta": chamada["name"], "aprovacao_id": aprovacao_id, "comentario": comentario}
+                    eid, "aprovada", f"{chamada['name']} aprovada", {"ferramenta": chamada["name"], "aprovacao_id": aprovacao_id, "comentario": comentario, "por": por}
                 )
                 # As regras são reavaliadas na hora de executar: os controles
                 # podem ter mudado enquanto a ação esperava aprovação.
@@ -262,7 +262,7 @@ class Agente:
                     resultado = self._executar(eid, chamada)
             else:
                 self.controle.registrar(
-                    eid, "rejeitada", f"{chamada['name']} rejeitada", {"ferramenta": chamada["name"], "aprovacao_id": aprovacao_id, "comentario": comentario}
+                    eid, "rejeitada", f"{chamada['name']} rejeitada", {"ferramenta": chamada["name"], "aprovacao_id": aprovacao_id, "comentario": comentario, "por": por}
                 )
                 texto = "Ação rejeitada pelo operador humano."
                 if comentario:

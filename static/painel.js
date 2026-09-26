@@ -301,7 +301,7 @@ function corpoEvento(e, aprovacoes) {
   const d = e.dados || {};
   const detalhes = (rotulo, valor) => `<details data-id="${e.id}"><summary>${rotulo}</summary><pre>${json(valor)}</pre></details>`;
   switch (e.tipo) {
-    case "inicio": return `<div class="corpo">${esc(d.tarefa)}</div>`;
+    case "inicio": return `<div class="corpo">${esc(d.tarefa)}</div>${d.por ? `<div class="corpo suave">por ${esc(d.por)}</div>` : ""}`;
     case "texto": return `<div class="corpo">${esc(d.texto)}</div>`;
     case "pensamento": return `<div class="corpo suave">${esc(d.texto)}</div>`;
     case "modelo":
@@ -319,7 +319,7 @@ function corpoEvento(e, aprovacoes) {
       return `<div class="corpo"><code>${esc(d.ferramenta)}</code> ${esc(d.motivo)}</div>`;
     case "aprovada":
     case "rejeitada":
-      return `<div class="corpo"><code>${esc(d.ferramenta)}</code>${d.comentario ? ` “${esc(d.comentario)}”` : ""}</div>`;
+      return `<div class="corpo"><code>${esc(d.ferramenta)}</code>${d.por ? ` por ${esc(d.por)}` : ""}${d.comentario ? ` “${esc(d.comentario)}”` : ""}</div>`;
     case "erro_ferramenta":
       return `<div class="corpo"><code>${esc(d.ferramenta)}</code> ${esc(d.erro)}</div>`;
     case "erro": return `<div class="corpo">${esc(d.erro || e.titulo)}</div>`;
@@ -427,7 +427,7 @@ async function renderHistorico() {
       <button class="item-exec" data-id="${e.id}" type="button">
         <span class="t">${esc(e.tarefa)}</span>
         ${chipStatus(e.status)}
-        <span class="m">#${e.id} · ${hora(e.criado_em)} · ${e.passos} passo(s) · ${numero(e.tokens_entrada + e.tokens_saida)} tokens${e.modo === "real" ? ` · US$ ${e.custo_usd.toFixed(4)}` : ""}</span>
+        <span class="m">#${e.id} · ${hora(e.criado_em)}${e.autor ? ` · por ${esc(e.autor)}` : ""} · ${e.passos} passo(s) · ${numero(e.tokens_entrada + e.tokens_saida)} tokens${e.modo === "real" ? ` · US$ ${e.custo_usd.toFixed(4)}` : ""}</span>
       </button>`).join("")
     : `<div class="vazio-grande"><strong>Nenhuma tarefa ainda</strong><span>As tarefas que você der ao agente aparecem aqui.</span></div>`;
   desenhar($("#execucoes"), "historico", assinatura, html);
@@ -617,41 +617,103 @@ async function ciclo() {
 
 // ==================================================================== login
 let cicloAtivo = null;
+estado.papel = "admin";
 
-function mostrarLogin() {
+function trocarFormLogin(nome) {
+  $$(".abas-login .segmento").forEach((b) => b.classList.toggle("ativo", b.dataset.form === nome));
+  $$(".form-login").forEach((f) => (f.hidden = f.dataset.form !== nome));
+  $("#erro-login").hidden = true;
+  const primeiro = $(`.form-login[data-form="${nome}"] input`);
+  if (primeiro) setTimeout(() => primeiro.focus(), 50);
+}
+$$(".abas-login .segmento").forEach((b) => b.addEventListener("click", () => trocarFormLogin(b.dataset.form)));
+
+async function mostrarLogin() {
   if (cicloAtivo) clearInterval(cicloAtivo);
   cicloAtivo = null;
+  $$("#tela-login input").forEach((i) => (i.value = ""));
   $("#tela-login").hidden = false;
-  $("#senha").value = "";
-  setTimeout(() => $("#senha").focus(), 50);
+  let s = {};
+  try { s = await (await fetch("/api/sessao")).json(); } catch { /* segue com o padrão */ }
+  const precisaAdmin = s.admin_configurado === false;
+  $("#aba-admin").hidden = !precisaAdmin;
+  trocarFormLogin(precisaAdmin ? "admin" : "entrar");
 }
 
-async function iniciarPainel() {
+/** Mostra ou esconde o que é só do administrador. */
+function aplicarPapel(sessao) {
+  estado.papel = sessao.papel || "admin";
+  const admin = estado.papel === "admin";
+  $("#btn-pausa").hidden = !admin;
+  $("#btn-resetar").hidden = !admin;
+  $(".cartao-ia").hidden = !admin;
+  $$('.pagina[data-pagina="controles"] .duas-colunas').forEach((el) => el.classList.toggle("so-leitura", !admin));
+  $("#btn-salvar-limites").hidden = !admin;
+  let aviso = $("#aviso-visitante");
+  if (!admin && !aviso) {
+    aviso = document.createElement("p");
+    aviso.id = "aviso-visitante";
+    aviso.className = "aviso-visitante";
+    aviso.textContent = "Você entrou como visitante: pode ver as regras, mas só o administrador altera.";
+    $('.pagina[data-pagina="controles"] .cab-pagina').after(aviso);
+  }
+  if (aviso) aviso.hidden = admin;
+  $("#btn-sair").hidden = !sessao.login_necessario;
+  const quem = $("#quem-sou");
+  quem.hidden = !sessao.login_necessario;
+  quem.innerHTML = sessao.usuario ? `<b>${esc(sessao.usuario)}</b> · ${admin ? "administrador" : "visitante"}` : "";
+}
+
+async function iniciarPainel(sessao) {
   $("#tela-login").hidden = true;
+  if (sessao) aplicarPapel(sessao);
   await atualizarStatus().catch(console.error);
   mostrarPagina(paginaDoEndereco());
   await ciclo();
   if (!cicloAtivo) cicloAtivo = setInterval(ciclo, 1500);
 }
 
-$("#form-login").addEventListener("submit", async (ev) => {
+async function enviarLogin(ev, caminho, corpo, conferir) {
   ev.preventDefault();
   const erro = $("#erro-login");
-  const botao = $("#form-login button[type=submit]");
+  const botao = ev.target.querySelector("button[type=submit]");
   erro.hidden = true;
+  const problema = conferir ? conferir() : "";
+  if (problema) {
+    erro.textContent = problema;
+    erro.hidden = false;
+    return;
+  }
   botao.disabled = true;
   try {
-    await api("/api/login", { method: "POST", body: { senha: $("#senha").value } });
+    const r = await api(caminho, { method: "POST", body: corpo() });
     estado.pendentesVistas = null;
     estado.assinaturas = {};
-    await iniciarPainel();
+    await iniciarPainel({ login_necessario: true, ...r });
   } catch (e) {
     erro.textContent = e.message;
     erro.hidden = false;
   } finally {
     botao.disabled = false;
   }
-});
+}
+
+$("#form-entrar").addEventListener("submit", (ev) =>
+  enviarLogin(ev, "/api/login", () => ({ usuario: $("#login-usuario").value.trim(), senha: $("#login-senha").value })));
+
+$("#form-criar").addEventListener("submit", (ev) =>
+  enviarLogin(
+    ev, "/api/contas",
+    () => ({ usuario: $("#criar-usuario").value.trim(), senha: $("#criar-senha").value }),
+    () => ($("#criar-senha").value !== $("#criar-senha2").value ? "As duas senhas não são iguais." : ""),
+  ));
+
+$("#form-admin").addEventListener("submit", (ev) =>
+  enviarLogin(
+    ev, "/api/admin/configurar",
+    () => ({ codigo: $("#admin-codigo").value.trim(), senha: $("#admin-senha").value }),
+    () => ($("#admin-senha").value !== $("#admin-senha2").value ? "As duas senhas não são iguais." : ""),
+  ));
 
 $("#btn-sair").addEventListener("click", async () => {
   await api("/api/logout", { method: "POST", body: {} }).catch(() => {});
@@ -659,9 +721,9 @@ $("#btn-sair").addEventListener("click", async () => {
 });
 
 (async () => {
-  let sessao = { login_necessario: false, autenticado: true };
+  let sessao = { login_necessario: false, autenticado: true, papel: "admin" };
   try { sessao = await api("/api/sessao"); } catch (e) { console.error(e); }
   $("#btn-sair").hidden = !sessao.login_necessario;
-  if (sessao.autenticado) await iniciarPainel();
+  if (sessao.autenticado) await iniciarPainel(sessao);
   else mostrarLogin();
 })();

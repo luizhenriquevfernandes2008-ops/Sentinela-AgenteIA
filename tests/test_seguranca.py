@@ -37,13 +37,15 @@ def operador(app_publico):
 
 
 # ------------------------------------------------------------- publicação
-def test_nao_publica_sem_senha_forte(cfg):
+def test_nao_publica_com_senha_fraca(cfg):
     cfg.publico = True
     cfg.loja_api_key = CHAVE_LOJA
-    for senha in ["", "curta"]:
-        cfg.senha_operador = senha
-        with pytest.raises(RuntimeError, match="SENHA_OPERADOR"):
-            criar_app(cfg)
+    cfg.senha_operador = "curta"
+    with pytest.raises(RuntimeError, match="SENHA_OPERADOR"):
+        criar_app(cfg)
+    # Sem SENHA_OPERADOR pode: o administrador é criado no primeiro acesso.
+    cfg.senha_operador = ""
+    assert criar_app(cfg).state.contas.codigo_configuracao
 
 
 def test_nao_publica_com_chave_da_loja_de_exemplo(cfg):
@@ -61,7 +63,8 @@ def test_saude_publica_sem_dados(visitante):
 
 
 def test_sem_login_nada_de_dados(visitante):
-    assert visitante.get("/api/sessao").json() == {"login_necessario": True, "autenticado": False}
+    sessao = visitante.get("/api/sessao").json()
+    assert sessao["login_necessario"] is True and sessao["autenticado"] is False
     for rota in ["/api/loja", "/api/execucoes", "/api/aprovacoes", "/api/controles", "/api/metricas", "/api/ia"]:
         assert visitante.get(rota).status_code == 401, rota
     # /api/status responde sem login (o Render usa para checar o deploy), mas sem nenhum dado.
@@ -238,5 +241,6 @@ def test_api_da_loja_so_com_a_chave_certa(visitante):
 
 
 def test_local_sem_senha_continua_sem_login(cliente):
-    assert cliente.get("/api/sessao").json() == {"login_necessario": False, "autenticado": True}
+    sessao = cliente.get("/api/sessao").json()
+    assert sessao["login_necessario"] is False and sessao["autenticado"] is True
     assert cliente.get("/api/loja").status_code == 200

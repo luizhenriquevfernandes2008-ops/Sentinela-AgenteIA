@@ -55,6 +55,7 @@
         <span id="modo" class="chip">…</span>
         <span id="estado-agente" class="status"><i></i><span>…</span></span>
         <button id="btn-pausa" class="botao bloco" type="button">Pausar agente</button>
+        <span id="quem-sou" class="quem-sou" hidden></span>
         <button id="btn-sair" class="link sair" type="button" hidden>Sair</button>
       </div>
     </aside>
@@ -247,19 +248,61 @@
 
   <!-- Tela de login: aparece quando o servidor exige senha (versão online). -->
   <div id="tela-login" class="tela-login" hidden>
-    <form id="form-login" class="cartao-login">
+    <div class="cartao-login">
       <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
         <path d="M16 2 4 7v8c0 7.4 5.1 13.4 12 15 6.9-1.6 12-7.6 12-15V7L16 2z" fill="currentColor"/>
         <path d="m11 16 3.5 3.5L21.5 12" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <h1>Sentinela</h1>
-      <p>Área do operador. Entre com a senha para controlar o agente.</p>
-      <label class="campo">Senha
-        <input type="password" id="senha" autocomplete="current-password" required maxlength="200">
-      </label>
-      <button class="botao primario grande bloco" type="submit">Entrar</button>
+      <p>Agente de IA com controle humano</p>
+
+      <div class="segmentos abas-login" role="tablist">
+        <button class="segmento ativo" data-form="entrar" type="button">Entrar</button>
+        <button class="segmento" data-form="criar" type="button">Criar conta</button>
+        <button class="segmento" data-form="admin" type="button" id="aba-admin" hidden>Configurar ADM</button>
+      </div>
+
+      <form id="form-entrar" class="form-login" data-form="entrar">
+        <label class="campo">Usuário
+          <input type="text" id="login-usuario" autocomplete="username" maxlength="60" placeholder="seu usuário (ou admin)" autocapitalize="none" spellcheck="false">
+        </label>
+        <label class="campo">Senha
+          <input type="password" id="login-senha" autocomplete="current-password" required maxlength="200">
+        </label>
+        <button class="botao primario grande bloco" type="submit">Entrar</button>
+      </form>
+
+      <form id="form-criar" class="form-login" data-form="criar" hidden>
+        <p class="nota-login">Crie uma conta de visitante para testar a demo: dar tarefas, aprovar ações e ver a loja. As regras e a IA ficam com o administrador.</p>
+        <label class="campo">Escolha um usuário
+          <input type="text" id="criar-usuario" autocomplete="username" required minlength="3" maxlength="30" placeholder="ex.: recrutador" autocapitalize="none" spellcheck="false">
+        </label>
+        <label class="campo">Crie uma senha (8+ caracteres)
+          <input type="password" id="criar-senha" autocomplete="new-password" required minlength="8" maxlength="200">
+        </label>
+        <label class="campo">Repita a senha
+          <input type="password" id="criar-senha2" autocomplete="new-password" required minlength="8" maxlength="200">
+        </label>
+        <button class="botao primario grande bloco" type="submit">Criar conta e entrar</button>
+      </form>
+
+      <form id="form-admin" class="form-login" data-form="admin" hidden>
+        <p class="nota-login">Primeiro acesso: crie a senha do <strong>administrador</strong>. Use o código que aparece no log do servidor (no Render: <strong>Logs</strong>, procure “CÓDIGO PARA CRIAR A SENHA”).</p>
+        <label class="campo">Código do log
+          <input type="text" id="admin-codigo" required maxlength="40" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" spellcheck="false" autocomplete="off">
+        </label>
+        <label class="campo">Senha do administrador (12+ caracteres)
+          <input type="password" id="admin-senha" autocomplete="new-password" required minlength="12" maxlength="200">
+        </label>
+        <label class="campo">Repita a senha
+          <input type="password" id="admin-senha2" autocomplete="new-password" required minlength="12" maxlength="200">
+        </label>
+        <button class="botao primario grande bloco" type="submit">Criar senha e entrar</button>
+        <p class="nota-login">Depois, entre com o usuário <strong>admin</strong> e essa senha.</p>
+      </form>
+
       <p id="erro-login" class="erro" role="alert" hidden></p>
-    </form>
+    </div>
   </div>
 
   <script src="/static/painel.js"></script>

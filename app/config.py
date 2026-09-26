@@ -125,8 +125,10 @@ class Config:
         if not self.publico:
             return []
         problemas = []
-        if len(self.senha_operador) < 12:
-            problemas.append("SENHA_OPERADOR precisa ter pelo menos 12 caracteres para publicar o painel.")
+        # Sem SENHA_OPERADOR tudo bem: o administrador é criado no primeiro acesso,
+        # com o código que aparece no log. Se ela existir, precisa ser forte.
+        if self.senha_operador and len(self.senha_operador) < 12:
+            problemas.append("SENHA_OPERADOR precisa ter pelo menos 12 caracteres (ou apague a variável).")
         if self.loja_api_key == "dev-loja-123" or len(self.loja_api_key) < 16:
             problemas.append("LOJA_API_KEY precisa ser uma chave própria, com pelo menos 16 caracteres.")
         return problemas

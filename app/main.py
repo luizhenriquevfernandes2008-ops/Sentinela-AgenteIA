@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from .agente import Agente, AgentePausado
 from .cerebro import Cerebro, CerebroClaude, CerebroCompativel, CerebroSimulado, ErroProvedor
 from .config import PROVEDORES, Config
+from .contas import ADMIN, Contas, ErroConta
 from .controle import Controle, ControleInvalido
 from .ferramentas import FERRAMENTAS, ClienteLoja
 from .loja import Loja
@@ -32,6 +33,17 @@ class NovaTarefa(BaseModel):
 
 
 class Login(BaseModel):
+    usuario: str = Field(default="", max_length=60)
+    senha: str = Field(min_length=1, max_length=200)
+
+
+class NovaConta(BaseModel):
+    usuario: str = Field(min_length=1, max_length=60)
+    senha: str = Field(min_length=1, max_length=200)
+
+
+class ConfigurarAdmin(BaseModel):
+    codigo: str = Field(min_length=1, max_length=40)
     senha: str = Field(min_length=1, max_length=200)
 
 
@@ -124,8 +136,13 @@ def criar_app(
     app.state.controle = controle
     app.mount("/loja", app_loja)
 
+    contas = Contas(Path(cfg.banco_controle).with_name("contas.db"), senha_env=cfg.senha_operador)
+    app.state.contas = contas
     sessoes = Sessoes(cfg.segredo_sessao, cfg.horas_sessao)
-    instalar_filtro(app, cfg, sessoes)
+    instalar_filtro(app, cfg, sessoes, contas.existe)
+    # Criação de contas: 3 por hora por IP e 30 por hora no total.
+    contas_por_ip = Limitador(3, 3600)
+    contas_no_total = Limitador(30, 3600)
     # Força bruta na senha: 5 erros por IP ou 30 no total a cada 15 minutos.
     erros_por_ip = Limitador(5, 15 * 60)
     erros_no_total = Limitador(30, 15 * 60)
@@ -142,30 +159,86 @@ def criar_app(
         return {"ok": True}
 
     # ------------------------------------------------------------------ login
-    @app.get("/api/sessao")
-    def sessao(request: Request) -> dict[str, bool]:
-        return {
-            "login_necessario": cfg.exige_login,
-            "autenticado": not cfg.exige_login or sessoes.identificador(request.cookies.get(COOKIE_SESSAO)) is not None,
-        }
+    def sessao_atual(request: Request):
+        sessao = sessoes.ler(request.cookies.get(COOKIE_SESSAO))
+        if sessao is None or not contas.existe(sessao.usuario, sessao.papel):
+            return None
+        return sessao
 
-    @app.post("/api/login")
-    def login(dados: Login, request: Request, response: Response) -> dict[str, bool]:
-        if not cfg.exige_login:
-            return {"autenticado": True}
-        ip = ip_do_cliente(request, cfg)
-        if erros_por_ip.bloqueado(ip) or erros_no_total.bloqueado("todos"):
-            raise HTTPException(429, "Muitas tentativas erradas. Espere 15 minutos e tente de novo.")
-        if not cfg.senha_operador or not hmac.compare_digest(dados.senha.encode(), cfg.senha_operador.encode()):
-            erros_por_ip.registrar(ip)
-            erros_no_total.registrar("todos")
-            raise HTTPException(401, "Senha incorreta.")
-        token, duracao = sessoes.criar()
+    def entrar(response: Response, request: Request, papel: str, usuario: str) -> dict[str, Any]:
+        token, duracao = sessoes.criar(papel, usuario)
         response.set_cookie(
             COOKIE_SESSAO, token, max_age=duracao, httponly=True, samesite="strict",
             secure=conexao_https(request), path="/",
         )
-        return {"autenticado": True}
+        return {"autenticado": True, "papel": papel, "usuario": usuario}
+
+    def contra_forca_bruta(request: Request) -> str:
+        ip = ip_do_cliente(request, cfg)
+        if erros_por_ip.bloqueado(ip) or erros_no_total.bloqueado("todos"):
+            raise HTTPException(429, "Muitas tentativas erradas. Espere 15 minutos e tente de novo.")
+        return ip
+
+    def registrar_erro(ip: str) -> None:
+        erros_por_ip.registrar(ip)
+        erros_no_total.registrar("todos")
+
+    @app.get("/api/sessao")
+    def sessao(request: Request) -> dict[str, Any]:
+        if not cfg.exige_login:
+            return {"login_necessario": False, "autenticado": True, "papel": ADMIN, "usuario": "",
+                    "admin_configurado": True}
+        atual = sessao_atual(request)
+        return {
+            "login_necessario": True,
+            "autenticado": atual is not None,
+            "papel": atual.papel if atual else None,
+            "usuario": atual.usuario if atual else None,
+            "admin_configurado": contas.admin_configurado(),
+        }
+
+    @app.post("/api/login")
+    def login(dados: Login, request: Request, response: Response) -> dict[str, Any]:
+        if not cfg.exige_login:
+            return {"autenticado": True, "papel": ADMIN, "usuario": ""}
+        ip = contra_forca_bruta(request)
+        usuario = (dados.usuario or "admin").strip().lower()
+        papel = contas.verificar(usuario, dados.senha)
+        if papel is None:
+            registrar_erro(ip)
+            raise HTTPException(401, "Usuário ou senha incorretos.")
+        return entrar(response, request, papel, usuario)
+
+    @app.post("/api/contas", status_code=201)
+    def criar_conta(dados: NovaConta, request: Request, response: Response) -> dict[str, Any]:
+        if not cfg.exige_login:
+            raise HTTPException(400, "Rodando no seu computador não há contas: o painel já está liberado.")
+        ip = ip_do_cliente(request, cfg)
+        if not contas_no_total.tentar("todos") or not contas_por_ip.tentar(ip):
+            raise HTTPException(429, "Muitas contas criadas agora. Tente mais tarde.")
+        try:
+            usuario = contas.criar_visitante(dados.usuario, dados.senha)
+        except ErroConta as erro:
+            raise HTTPException(400, str(erro))
+        return entrar(response, request, "visitante", usuario)
+
+    @app.post("/api/admin/configurar", status_code=201)
+    def configurar_admin(dados: ConfigurarAdmin, request: Request, response: Response) -> dict[str, Any]:
+        if not cfg.exige_login:
+            raise HTTPException(400, "Rodando no seu computador não há login.")
+        ip = contra_forca_bruta(request)
+        try:
+            usuario = contas.configurar_admin(dados.codigo, dados.senha)
+        except ErroConta as erro:
+            if "Código" in str(erro):
+                registrar_erro(ip)
+            raise HTTPException(400, str(erro))
+        print("Administrador configurado pelo painel.")
+        return entrar(response, request, ADMIN, usuario)
+
+    def so_admin(request: Request) -> None:
+        if cfg.exige_login and getattr(request.state, "papel", None) != ADMIN:
+            raise HTTPException(403, "Só o administrador pode fazer isso.")
 
     @app.post("/api/logout")
     def logout(request: Request, response: Response) -> dict[str, bool]:
@@ -177,7 +250,7 @@ def criar_app(
     @app.get("/api/status")
     def status(request: Request) -> dict[str, Any]:
         # Sem login, só diz que está no ar (o Render usa isso para saber se o deploy subiu).
-        if cfg.exige_login and sessoes.identificador(request.cookies.get(COOKIE_SESSAO)) is None:
+        if cfg.exige_login and sessao_atual(request) is None:
             return {"ok": True}
         return {
             "ok": True,
@@ -197,7 +270,7 @@ def criar_app(
         if not tarefas_no_total.tentar("todos") or not tarefas_por_pessoa.tentar(pessoa):
             raise HTTPException(429, "Muitas tarefas em pouco tempo. Espere um minuto.")
         try:
-            eid = agente.iniciar(dados.tarefa)
+            eid = agente.iniciar(dados.tarefa, autor=getattr(request.state, "usuario", ""))
         except AgentePausado as erro:
             raise HTTPException(409, str(erro))
         except ValueError as erro:
@@ -234,9 +307,11 @@ def criar_app(
         return [{**a, "tarefa": tarefas.get(a["execucao_id"], "")} for a in aprovacoes]
 
     @app.post("/api/aprovacoes/{aprovacao_id}/decisao")
-    def decidir(aprovacao_id: int, dados: Decisao, background: BackgroundTasks) -> dict[str, Any]:
+    def decidir(aprovacao_id: int, dados: Decisao, request: Request, background: BackgroundTasks) -> dict[str, Any]:
         try:
-            eid, continuar = agente.decidir(aprovacao_id, dados.aprovar, dados.comentario)
+            eid, continuar = agente.decidir(
+                aprovacao_id, dados.aprovar, dados.comentario, por=getattr(request.state, "usuario", "")
+            )
         except KeyError:
             raise HTTPException(404, "Aprovação não encontrada.")
         except ValueError as erro:
@@ -251,7 +326,8 @@ def criar_app(
         return controle.controles()
 
     @app.put("/api/controles")
-    def atualizar_controles(mudancas: dict[str, Any]) -> dict[str, Any]:
+    def atualizar_controles(mudancas: dict[str, Any], request: Request) -> dict[str, Any]:
+        so_admin(request)
         try:
             return controle.atualizar_controles(mudancas)
         except (ControleInvalido, ValueError, TypeError) as erro:
@@ -281,11 +357,13 @@ def criar_app(
         }
 
     @app.get("/api/ia")
-    def obter_ia() -> dict[str, Any]:
+    def obter_ia(request: Request) -> dict[str, Any]:
+        so_admin(request)
         return resumo_ia()
 
     @app.put("/api/ia")
     def ajustar_ia(dados: AjusteIA, request: Request) -> dict[str, Any]:
+        so_admin(request)
         if dados.modo == "simulado":
             controle.gravar_ajuste("ia", {"modo": "simulado", "chave": chave_salva()})
             aplicar_ia("simulado", CerebroSimulado(), "painel")
@@ -310,7 +388,8 @@ def criar_app(
         return resumo_ia()
 
     @app.delete("/api/ia/chave")
-    def remover_chave() -> dict[str, Any]:
+    def remover_chave(request: Request) -> dict[str, Any]:
+        so_admin(request)
         controle.apagar_ajuste("ia")
         # Volta ao que as variáveis de ambiente dizem (simulado, se não houver chave lá).
         aplicar_ia(cfg.modo, montar_cerebro(cfg.modo, cfg.groq_api_key), "servidor")
@@ -327,7 +406,8 @@ def criar_app(
         }
 
     @app.post("/api/demo/resetar")
-    def resetar_demo() -> dict[str, str]:
+    def resetar_demo(request: Request) -> dict[str, str]:
+        so_admin(request)
         """Volta tudo ao estado inicial: loja, histórico e controles."""
         loja.resetar()
         controle.resetar()

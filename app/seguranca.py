@@ -15,6 +15,8 @@ import secrets
 import threading
 import time
 from collections import defaultdict, deque
+from dataclasses import dataclass
+from typing import Callable
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
@@ -25,7 +27,7 @@ from .config import Config
 COOKIE_SESSAO = "sentinela_sessao"
 TAMANHO_MAXIMO_CORPO = 64 * 1024  # 64 KB: nenhuma requisição legítima do painel chega perto
 # /api/status responde sem login, mas só com {"ok": true} (ver main.py).
-ROTAS_SEM_LOGIN = {"/api/saude", "/api/status", "/api/sessao", "/api/login"}
+ROTAS_SEM_LOGIN = {"/api/saude", "/api/status", "/api/sessao", "/api/login", "/api/contas", "/api/admin/configurar"}
 METODOS_QUE_ALTERAM = {"POST", "PUT", "PATCH", "DELETE"}
 
 CSP = (
@@ -36,8 +38,15 @@ CSP = (
 
 
 # ================================================================== sessão
+@dataclass(frozen=True)
+class Sessao:
+    ident: str
+    papel: str
+    usuario: str
+
+
 class Sessoes:
-    """Tokens de sessão assinados com HMAC: prazo.identificador.assinatura."""
+    """Tokens assinados com HMAC: prazo.papel.usuario.identificador.assinatura."""
 
     def __init__(self, segredo: str, horas: int):
         self._segredo = segredo.encode()
@@ -49,32 +58,37 @@ class Sessoes:
         mac = hmac.new(self._segredo, conteudo.encode(), hashlib.sha256).digest()
         return base64.urlsafe_b64encode(mac).decode().rstrip("=")
 
-    def criar(self) -> tuple[str, int]:
+    def criar(self, papel: str, usuario: str) -> tuple[str, int]:
         prazo = int(time.time()) + self._duracao
-        conteudo = f"{prazo}.{secrets.token_urlsafe(18)}"
+        nome = base64.urlsafe_b64encode(usuario.encode()).decode().rstrip("=")
+        conteudo = f"{prazo}.{papel}.{nome}.{secrets.token_urlsafe(18)}"
         return f"{conteudo}.{self._assinar(conteudo)}", self._duracao
 
-    def identificador(self, token: str | None) -> str | None:
-        """Devolve o identificador da sessão se o token for válido, senão None."""
-        if not token or token.count(".") != 2:
+    def ler(self, token: str | None) -> Sessao | None:
+        """Devolve a sessão se o token for válido (assinatura, prazo, não revogado)."""
+        if not token or token.count(".") != 4:
             return None
-        prazo, ident, assinatura = token.split(".")
-        if not hmac.compare_digest(assinatura, self._assinar(f"{prazo}.{ident}")):
+        prazo, papel, nome, ident, assinatura = token.split(".")
+        if not hmac.compare_digest(assinatura, self._assinar(f"{prazo}.{papel}.{nome}.{ident}")):
             return None
         if not prazo.isdigit() or int(prazo) < time.time():
             return None
         with self._trava:
             if ident in self._revogados:
                 return None
-        return ident
+        try:
+            usuario = base64.urlsafe_b64decode(nome + "=" * (-len(nome) % 4)).decode()
+        except ValueError:
+            return None
+        return Sessao(ident, papel, usuario)
 
     def revogar(self, token: str | None) -> None:
-        ident = self.identificador(token)
-        if ident:
+        sessao = self.ler(token)
+        if sessao:
             with self._trava:
                 agora = time.time()
                 self._revogados = {k: v for k, v in self._revogados.items() if v > agora}
-                self._revogados[ident] = agora + self._duracao
+                self._revogados[sessao.ident] = agora + self._duracao
 
 
 # ============================================================ limites de taxa
@@ -141,7 +155,9 @@ def _origem_confere(request: Request) -> bool:
     return urlsplit(origem).netloc == host
 
 
-def instalar_filtro(app: FastAPI, cfg: Config, sessoes: Sessoes) -> None:
+def instalar_filtro(
+    app: FastAPI, cfg: Config, sessoes: Sessoes, conta_existe: Callable[[str, str], bool]
+) -> None:
     @app.middleware("http")
     async def filtro(request: Request, chamar_proximo):
         caminho = request.url.path
@@ -162,10 +178,13 @@ def instalar_filtro(app: FastAPI, cfg: Config, sessoes: Sessoes) -> None:
                     return JSONResponse({"detail": "Origem não permitida."}, status_code=403)
 
             if cfg.exige_login and caminho not in ROTAS_SEM_LOGIN:
-                ident = sessoes.identificador(request.cookies.get(COOKIE_SESSAO))
-                if ident is None:
+                sessao = sessoes.ler(request.cookies.get(COOKIE_SESSAO))
+                # A conta precisa continuar existindo (pode ter sido apagada).
+                if sessao is None or not conta_existe(sessao.usuario, sessao.papel):
                     return JSONResponse({"detail": "Faça login para continuar."}, status_code=401)
-                request.state.sessao = ident
+                request.state.sessao = sessao.ident
+                request.state.papel = sessao.papel
+                request.state.usuario = sessao.usuario
 
         resposta = await chamar_proximo(request)
 

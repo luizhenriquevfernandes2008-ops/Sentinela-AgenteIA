@@ -127,6 +127,12 @@ class Controle:
         self._trava = threading.RLock()
         with self._trava:
             self._conn.executescript(ESQUEMA)
+            # Colunas novas em bancos antigos: quem criou a tarefa e quem decidiu.
+            for tabela, coluna in (("execucoes", "autor"), ("aprovacoes", "decidido_por")):
+                try:
+                    self._conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} TEXT NOT NULL DEFAULT ''")
+                except sqlite3.OperationalError:
+                    pass  # já existe
             self._conn.commit()
 
     def resetar(self) -> None:
@@ -275,12 +281,12 @@ class Controle:
         return Decisao("permitir", "Permitido pelas regras.")
 
     # --------------------------------------------------------------- execuções
-    def criar_execucao(self, tarefa: str, modo: str, modelo: str) -> int:
+    def criar_execucao(self, tarefa: str, modo: str, modelo: str, autor: str = "") -> int:
         with self._trava:
             cur = self._conn.execute(
-                "INSERT INTO execucoes (tarefa, status, modo, modelo, criado_em, atualizado_em) "
-                "VALUES (?, 'executando', ?, ?, ?, ?)",
-                (tarefa, modo, modelo, _agora(), _agora()),
+                "INSERT INTO execucoes (tarefa, status, modo, modelo, criado_em, atualizado_em, autor) "
+                "VALUES (?, 'executando', ?, ?, ?, ?, ?)",
+                (tarefa, modo, modelo, _agora(), _agora(), autor),
             )
             self._conn.commit()
             return cur.lastrowid
@@ -321,7 +327,7 @@ class Controle:
         with self._trava:
             linhas = self._conn.execute(
                 "SELECT id, tarefa, status, modo, modelo, passos, tokens_entrada, tokens_saida, custo_usd, "
-                "resposta_final, criado_em, atualizado_em FROM execucoes ORDER BY id DESC LIMIT ?",
+                "resposta_final, criado_em, atualizado_em, autor FROM execucoes ORDER BY id DESC LIMIT ?",
                 (limite,),
             ).fetchall()
         return [dict(l) for l in linhas]
@@ -388,13 +394,13 @@ class Controle:
             linhas = self._conn.execute(sql + " ORDER BY id", args).fetchall()
         return [{**dict(l), "entrada": json.loads(l["entrada_json"])} for l in linhas]
 
-    def decidir_aprovacao(self, aprovacao_id: int, aprovado: bool, comentario: str = "") -> bool:
+    def decidir_aprovacao(self, aprovacao_id: int, aprovado: bool, comentario: str = "", por: str = "") -> bool:
         """Grava a decisão. Retorna False se a aprovação já tinha sido decidida."""
         with self._trava:
             cur = self._conn.execute(
-                "UPDATE aprovacoes SET status = ?, comentario = ?, decidido_em = ? "
+                "UPDATE aprovacoes SET status = ?, comentario = ?, decidido_em = ?, decidido_por = ? "
                 "WHERE id = ? AND status = 'pendente'",
-                ("aprovada" if aprovado else "rejeitada", comentario, _agora(), aprovacao_id),
+                ("aprovada" if aprovado else "rejeitada", comentario, _agora(), por, aprovacao_id),
             )
             self._conn.commit()
             return cur.rowcount == 1

@@ -402,12 +402,12 @@ textarea { resize: vertical; min-height: 120px; font-size: 1.02rem; margin-botto
 .cartao-login .logo { width: 52px; height: 52px; color: var(--destaque); }
 .cartao-login h1 { margin: 10px 0 4px; font-size: 1.6rem; }
 .cartao-login > p { color: var(--suave); margin: 0 0 8px; }
-.cartao-login .campo { text-align: left; margin-bottom: 18px; }
-.cartao-login input[type="password"] {
+.cartao-login .campo { text-align: left; margin: 0 0 14px; }
+.cartao-login input[type="text"], .cartao-login input[type="password"] {
   width: 100%; font: inherit; color: var(--texto); background: var(--superficie); margin-top: 6px;
   border: 1px solid var(--borda); border-radius: 12px; padding: 12px 14px;
 }
-.cartao-login input[type="password"]:focus { outline: none; border-color: var(--destaque); box-shadow: 0 0 0 3px var(--destaque-suave); }
+.cartao-login input[type="text"]:focus, .cartao-login input[type="password"]:focus { outline: none; border-color: var(--destaque); box-shadow: 0 0 0 3px var(--destaque-suave); }
 .sair { align-self: center; }
 
 .lateral-rodape .chip { white-space: normal; line-height: 1.35; border-radius: 10px; }
@@ -425,3 +425,14 @@ textarea { resize: vertical; min-height: 120px; font-size: 1.02rem; margin-botto
 #ia-mensagem:empty { display: none; }
 #ia-mensagem.erro { color: var(--perigo); }
 #ia-mensagem.ok { color: var(--ok); }
+
+.cartao-login { width: min(440px, 100%); }
+.abas-login { margin: 18px auto 18px; }
+.form-login { text-align: left; }
+.nota-login { color: var(--suave); font-size: .88rem; margin: 0 0 14px; text-align: left; }
+.form-login .nota-login:last-child { margin: 12px 0 0; }
+.quem-sou { font-size: .85rem; color: var(--suave); text-align: center; }
+.quem-sou b { color: var(--texto); }
+.so-leitura { opacity: .6; pointer-events: none; }
+.aviso-visitante { background: var(--destaque-suave); color: var(--destaque); border-radius: 12px; padding: 12px 16px; margin-bottom: 20px; font-size: .92rem; }
+@media (max-width: 860px) { .quem-sou { display: none; } }

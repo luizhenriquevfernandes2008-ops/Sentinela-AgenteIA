@@ -40,7 +40,15 @@ def principal() -> None:
         threading.Timer(1.5, webbrowser.open, args=[endereco]).start()
     if cfg.exige_login:
         print("Login do operador: ativado")
-    uvicorn.run(criar_app(cfg), host=cfg.host, port=porta, server_header=False)
+    app = criar_app(cfg)
+    codigo = app.state.contas.codigo_configuracao
+    if cfg.exige_login and codigo:
+        print("\n" + "=" * 62)
+        print("  CÓDIGO PARA CRIAR A SENHA DE ADMINISTRADOR:  " + codigo)
+        print("  Abra o site, toque em 'Configurar administrador' e use-o.")
+        print("  Ele vale uma vez e muda a cada reinício do servidor.")
+        print("=" * 62 + "\n", flush=True)
+    uvicorn.run(app, host=cfg.host, port=porta, server_header=False)
 
 
 if __name__ == "__main__":

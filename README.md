@@ -122,7 +122,7 @@ OpenAI na hora de cada chamada (`CerebroCompativel`), então qualquer provedor c
 python -m pytest -q
 ```
 
-São 71 testes. Eles cobrem a API da loja, o fluxo de aprovação (aprovar, rejeitar e decidir duas vezes),
+São 89 testes. Eles cobrem a API da loja, o fluxo de aprovação (aprovar, rejeitar e decidir duas vezes),
 cada regra, os limites, o cancelamento e a restauração da demonstração, além do **modo real com a API
 do Claude simulada no nível HTTP**. Neste último, o SDK oficial monta a requisição de verdade, então o
 teste confere o que seria enviado à Anthropic. Os testes de segurança (`tests/test_seguranca.py`) refazem
@@ -133,6 +133,11 @@ cada ataque descrito na seção **Segurança** e confirmam que ele é barrado. T
 ## Publicar online (Render, plano gratuito)
 
 A demonstração oficial está em <https://sentinela-4h76.onrender.com>. Para publicar a sua própria cópia:
+
+**Primeiro acesso:** abra o site e use a aba **Configurar ADM**. O código pedido aparece em **Logs** no Render
+("CÓDIGO PARA CRIAR A SENHA DE ADMINISTRADOR"). Depois, entre com o usuário `admin`. Visitantes usam
+**Criar conta**. No plano grátis o disco é apagado quando o site hiberna: as contas somem e um código novo
+aparece no log.
 
 O repositório já traz o `render.yaml`, que configura tudo sozinho. A versão online roda sempre no
 **modo simulado** até você ligar a IA, e o painel fica **atrás de uma senha** (`SENHA_OPERADOR`, que o Render
@@ -184,9 +189,11 @@ muda as regras. Por isso, a versão online foi testada com ataques reais, e cada
 
 | Ataque | Proteção |
 |---|---|
-| Ver dados de clientes, aprovar ações ou mudar regras sem ser o operador | **Login com senha** em tudo que fica em `/api`. O servidor **se recusa a subir** online sem uma senha de 12+ caracteres |
+| Ver dados de clientes, aprovar ações ou mudar regras sem conta | **Login** em tudo que fica em `/api`. Online há dois papéis: **administrador** (tudo) e **visitante** (usa a demo, mas não mexe em regras, IA nem restauração) |
+| Tomar a conta de administrador | Ele é criado no primeiro acesso com um **código de uso único que só aparece no log do servidor**; senhas guardadas como hash scrypt com sal, nunca em texto |
 | Adivinhar a senha | Comparação em tempo constante e **bloqueio após 5 erros** por IP (30 no total) por 15 minutos |
-| Roubar ou forjar a sessão | Cookie assinado com HMAC, `HttpOnly`, `SameSite=Strict` e `Secure`; o logout invalida o token no servidor |
+| Roubar ou forjar a sessão (ou trocar "visitante" por "admin" no cookie) | Cookie assinado com HMAC (papel incluído na assinatura), `HttpOnly`, `SameSite=Strict` e `Secure`; o logout invalida o token; conta apagada perde o acesso |
+| Criar contas em massa | 3 contas por hora por IP, 30 no total, e no máximo 500 |
 | Afrouxar as regras (tirar a aprovação de reembolso, subir limites) | Online, as regras **só podem ficar mais rígidas** que o padrão seguro |
 | Valores absurdos nos controles (`"nan"`, negativos, `"false"` em texto) | Validação de tipo e de faixa em cada controle |
 | Burlar o limite de reembolso pedindo vários valores pequenos | O limite vale para a **soma dos reembolsos do pedido** |
