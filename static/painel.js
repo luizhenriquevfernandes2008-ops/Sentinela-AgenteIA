@@ -160,11 +160,13 @@ function irPara(nome) {
 async function atualizarStatus() {
   const s = await api("/api/status");
   estado.status = s;
-  $("#modo").className = "chip " + (s.modo === "real" ? "destaque" : "");
-  $("#modo").textContent = s.modo === "real" ? `Claude · ${s.modelo}` : "Modo simulado";
-  $("#modo").title = s.modo === "real"
-    ? "Usando a API do Claude de verdade"
-    : "Sem chave de API: um planejador por regras imita o modelo, sem custo";
+  const real = s.modo === "real";
+  $("#modo").className = "chip " + (real ? "destaque" : "");
+  $("#modo").textContent = real ? `${s.provedor} · ${s.modelo}` : "Modo simulado";
+  $("#modo").title = s.aviso
+    || (real
+      ? `IA de verdade: ${s.provedor} (${s.gratuito ? "plano gratuito" : "pago por uso"})`
+      : "Sem IA: um planejador por regras imita o modelo, sem custo");
   const indicador = $("#estado-agente");
   indicador.className = "status " + (s.agente_ativo ? "ativo" : "pausado");
   indicador.querySelector("span").textContent = s.agente_ativo ? "Agente ativo" : "Agente pausado";
@@ -254,8 +256,8 @@ async function renderInicio() {
     { rotulo: "Tokens hoje", valor: numero(m.tokens_hoje), barra: uso, extra: `${uso.toFixed(0)}% do orçamento diário` },
     {
       rotulo: "Custo",
-      valor: m.modo === "real" ? `US$ ${m.custo_usd.toFixed(3)}` : "US$ 0",
-      extra: m.modo === "real" ? "total gasto" : "modo simulado",
+      valor: m.modo === "real" && !m.gratuito ? `US$ ${m.custo_usd.toFixed(3)}` : "US$ 0",
+      extra: m.modo !== "real" ? "modo simulado" : m.gratuito ? `plano gratuito do ${m.provedor}` : "total gasto",
     },
   ];
   const html = cartoes.map((k) => `

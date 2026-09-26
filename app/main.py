@@ -14,8 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .agente import Agente, AgentePausado
-from .cerebro import Cerebro, CerebroClaude, CerebroSimulado
-from .config import Config
+from .cerebro import Cerebro, CerebroClaude, CerebroCompativel, CerebroSimulado
+from .config import PROVEDORES, Config
 from .controle import Controle, ControleInvalido
 from .ferramentas import FERRAMENTAS, ClienteLoja
 from .loja import Loja
@@ -53,9 +53,17 @@ def criar_app(
     controle = Controle(cfg.banco_controle, somente_mais_rigido=cfg.publico)
     app_loja = criar_app_loja(loja, cfg.loja_api_key, documentacao=not cfg.publico)
 
+    if cfg.modo == "real":  # nome antigo do modo Claude
+        cfg.modo = "claude"
     if cerebro is None:
-        cerebro = CerebroClaude(cfg) if cfg.modo == "real" else CerebroSimulado()
+        if cfg.modo == "claude":
+            cerebro = CerebroClaude(cfg)
+        elif cfg.modo == "groq":
+            cerebro = CerebroCompativel(cfg, cfg.groq_url, cfg.groq_api_key, cfg.groq_modelo)
+        else:
+            cerebro = CerebroSimulado()
     modo = "simulado" if isinstance(cerebro, CerebroSimulado) else "real"
+    provedor = PROVEDORES.get(cfg.modo, {"nome": "Simulado", "gratuito": True})
     # O agente fala com a loja por HTTP, como falaria com um sistema externo.
     cliente_loja = ClienteLoja(http_loja or httpx.Client(base_url=cfg.loja_url, timeout=15), cfg.loja_api_key)
     agente = Agente(cfg, controle, cliente_loja, cerebro, modo)
@@ -119,7 +127,10 @@ def criar_app(
     def status() -> dict[str, Any]:
         return {
             "modo": modo,
+            "provedor": provedor["nome"],
+            "gratuito": provedor["gratuito"],
             "modelo": agente.modelo,
+            "aviso": cfg.aviso_modo,
             "agente_ativo": controle.controles()["agente_ativo"],
             "ferramentas": {n: {"risco": f.risco, "descricao": f.descricao} for n, f in FERRAMENTAS.items()},
         }
@@ -193,7 +204,7 @@ def criar_app(
 
     @app.get("/api/metricas")
     def metricas() -> dict[str, Any]:
-        return {**controle.metricas(), "modo": modo}
+        return {**controle.metricas(), "modo": modo, "provedor": provedor["nome"], "gratuito": provedor["gratuito"]}
 
     # ------------------------------------------------- visão da loja (painel)
     @app.get("/api/loja")

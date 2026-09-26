@@ -13,7 +13,7 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-from .cerebro import Cerebro
+from .cerebro import Cerebro, ErroProvedor
 from .config import Config
 from .controle import Controle
 from .ferramentas import ClienteLoja, ErroFerramenta, definicoes_api
@@ -41,7 +41,8 @@ class Agente:
         self.loja = loja
         self.cerebro = cerebro
         self.modo = modo
-        self.modelo = cfg.modelo if modo == "real" else "simulado"
+        self.modelo = cfg.modelo_em_uso if modo == "real" else "simulado"
+        self.gratuito = cfg.modo != "claude"
         # Uma execução só pode ser avançada por uma thread por vez.
         self._travas: dict[int, threading.Lock] = {}
         self._trava_global = threading.Lock()
@@ -101,11 +102,18 @@ class Agente:
                 )
             if self.controle.tokens_hoje() >= ctrl["orcamento_tokens_dia"]:
                 return self._parar(eid, "interrompida", "limite", "Interrompida: orçamento diário de tokens esgotado.")
+            if not self.gratuito and self.controle.custo_hoje() >= self.cfg.limite_usd_dia:
+                # Teto em dólares definido no servidor (LIMITE_USD_DIA): o painel não consegue mudar.
+                return self._parar(
+                    eid, "interrompida", "limite",
+                    f"Interrompida: teto de gasto do dia atingido (US$ {self.cfg.limite_usd_dia:.2f}).",
+                )
 
             try:
                 resp = self.cerebro.responder(SYSTEM_PROMPT, mensagens, ferramentas)
             except Exception as erro:
-                return self._parar(eid, "erro", "erro", "Falha ao chamar o modelo.", {"erro": f"{type(erro).__name__}: {erro}"})
+                detalhe = str(erro) if isinstance(erro, ErroProvedor) else f"{type(erro).__name__}: {erro}"
+                return self._parar(eid, "erro", "erro", "Falha ao chamar o modelo.", {"erro": detalhe})
 
             self.controle.somar_uso(eid, resp.tokens_entrada, resp.tokens_saida, resp.custo_usd)
             self.controle.registrar(

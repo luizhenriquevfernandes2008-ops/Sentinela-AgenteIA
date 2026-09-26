@@ -78,18 +78,43 @@ pip install -r requirements.txt
 python -m app                   # abre em http://127.0.0.1:8000
 ```
 
-### Usando o Claude de verdade
+### Usando IA de verdade
 
-1. Crie uma chave em <https://console.anthropic.com>.
-2. Copie `.env.example` para um arquivo novo chamado `.env` e preencha `ANTHROPIC_API_KEY=...`.
-3. Rode de novo. O topo do painel passa a mostrar **Claude · claude-opus-5** e o custo real de cada tarefa.
+O agente tem três "cérebros", escolhidos pela variável `MODO_AGENTE` (no arquivo `.env` ou no Render):
 
-> O `.env` guarda sua chave e **nunca vai para o GitHub**: ele está no `.gitignore`. O que fica no repositório
+| `MODO_AGENTE` | O que decide os passos | Custo | Precisa de |
+|---|---|---|---|
+| `simulado` (padrão) | Regras em Python que imitam o formato de resposta do Claude. **Não é IA**: só entende frases parecidas com os exemplos | Grátis | Nada |
+| `groq` | IA de verdade: modelo aberto `openai/gpt-oss-120b` no [Groq](https://groq.com) | **Grátis** (plano gratuito, com limite de uso) | `GROQ_API_KEY` |
+| `claude` | IA de verdade: Claude, da Anthropic | Pago por uso, com teto diário em `LIMITE_USD_DIA` | `ANTHROPIC_API_KEY` |
+
+**IA grátis com o Groq:**
+
+1. Crie uma conta em <https://console.groq.com> e gere uma chave em **API Keys**.
+2. Copie `.env.example` para um arquivo novo chamado `.env` e preencha:
+   ```
+   MODO_AGENTE=groq
+   GROQ_API_KEY=gsk_...
+   ```
+3. Rode de novo. O painel passa a mostrar **Groq · openai/gpt-oss-120b** e o agente entende pedidos escritos do seu jeito.
+
+O plano gratuito do Groq limita o uso (por volta de 30 pedidos e 8 mil tokens por minuto, e 1.000 pedidos por dia).
+Uma tarefa usa várias chamadas; quando o limite é atingido, o agente espera e tenta de novo sozinho.
+
+> O `.env` guarda suas chaves e **nunca vai para o GitHub**: ele está no `.gitignore`. O que fica no repositório
 > é só o `.env.example`, um modelo sem nenhum segredo.
 
-Sem chave, o agente usa o **cérebro simulado**: um planejador por regras que devolve respostas
-**no mesmo formato da API do Claude**. Todo o resto (regras, aprovações, API da loja, auditoria)
-é exatamente o mesmo código nos dois modos.
+Com qualquer cérebro, as regras, as aprovações, a API da loja e a auditoria são exatamente o mesmo código.
+
+### Como a IA funciona aqui
+
+1. O servidor manda para o modelo a tarefa, as instruções de trabalho e a lista de ferramentas (consultar pedido, reembolsar...), cada uma com um formato de entrada.
+2. O modelo **decide** o próximo passo e responde pedindo uma ferramenta, por exemplo `consultar_pedido {"pedido_id": 1003}`.
+3. O modelo **não executa nada**: quem executa é o servidor, depois de passar pelas regras (e pela sua aprovação, se for sensível). O resultado volta para o modelo.
+4. Isso se repete até o modelo responder sem pedir ferramentas: essa é a resposta final.
+
+O histórico fica guardado no formato da API do Claude; para o Groq, `app/cerebro.py` converte para o formato
+OpenAI na hora de cada chamada (`CerebroCompativel`), então qualquer provedor compatível pode ser plugado.
 
 ### Testes
 
@@ -97,7 +122,7 @@ Sem chave, o agente usa o **cérebro simulado**: um planejador por regras que de
 python -m pytest -q
 ```
 
-São 53 testes. Eles cobrem a API da loja, o fluxo de aprovação (aprovar, rejeitar e decidir duas vezes),
+São 61 testes. Eles cobrem a API da loja, o fluxo de aprovação (aprovar, rejeitar e decidir duas vezes),
 cada regra, os limites, o cancelamento e a restauração da demonstração, além do **modo real com a API
 do Claude simulada no nível HTTP**. Neste último, o SDK oficial monta a requisição de verdade, então o
 teste confere o que seria enviado à Anthropic. Os testes de segurança (`tests/test_seguranca.py`) refazem
@@ -110,8 +135,11 @@ cada ataque descrito na seção **Segurança** e confirmam que ele é barrado. T
 A demonstração oficial está em <https://sentinela-4h76.onrender.com>. Para publicar a sua própria cópia:
 
 O repositório já traz o `render.yaml`, que configura tudo sozinho. A versão online roda sempre no
-**modo simulado**, então não gasta nada nem expõe chave nenhuma, e o painel fica **atrás de uma senha**
-(`SENHA_OPERADOR`, que o Render sorteia; você pode trocar por uma sua em **Environment**).
+**modo simulado** até você ligar a IA, e o painel fica **atrás de uma senha** (`SENHA_OPERADOR`, que o Render
+sorteia; você pode trocar por uma sua em **Environment**). `LIMITE_USD_DIA=0` impede qualquer gasto com o Claude.
+
+Para ligar a IA grátis online: em **Environment**, adicione `GROQ_API_KEY` com a sua chave e `MODO_AGENTE` = `groq`,
+e salve (o Render faz um novo deploy). Para desligar, volte `MODO_AGENTE` para `simulado`.
 
 1. Crie uma conta em <https://render.com> entrando com o GitHub.
 2. No painel do Render, clique em **New → Blueprint** e escolha o repositório `Sentinela-AgenteIA`.

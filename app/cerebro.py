@@ -81,6 +81,153 @@ class CerebroClaude:
         )
 
 
+# ============================================ provedores no formato OpenAI
+class ErroProvedor(Exception):
+    pass
+
+
+def _para_formato_openai(system: str, mensagens: list[dict]) -> list[dict]:
+    """Converte o histórico (formato do Claude) para o formato de chat da OpenAI."""
+    saida: list[dict] = [{"role": "system", "content": system}]
+    for msg in mensagens:
+        conteudo = msg["content"]
+        if isinstance(conteudo, str):
+            saida.append({"role": msg["role"], "content": conteudo})
+            continue
+        if msg["role"] == "assistant":
+            texto = "".join(b.get("text", "") for b in conteudo if b.get("type") == "text")
+            chamadas = [
+                {
+                    "id": b["id"],
+                    "type": "function",
+                    "function": {"name": b["name"], "arguments": json.dumps(b["input"], ensure_ascii=False)},
+                }
+                for b in conteudo
+                if b.get("type") == "tool_use"
+            ]
+            item: dict[str, Any] = {"role": "assistant", "content": texto or None}
+            if chamadas:
+                item["tool_calls"] = chamadas
+            saida.append(item)
+        else:
+            for b in conteudo:
+                if b.get("type") == "tool_result":
+                    texto = b.get("content", "")
+                    if isinstance(texto, list):
+                        texto = "".join(x.get("text", "") for x in texto)
+                    if b.get("is_error"):
+                        texto = f"ERRO: {texto}"
+                    saida.append({"role": "tool", "tool_call_id": b["tool_use_id"], "content": texto})
+                elif b.get("type") == "text":
+                    saida.append({"role": "user", "content": b["text"]})
+    return saida
+
+
+class CerebroCompativel:
+    """Qualquer provedor com API no formato OpenAI (aqui: Groq, plano gratuito).
+
+    O histórico continua guardado no formato do Claude; a conversão acontece
+    só na hora de chamar o provedor. Assim, agente, regras e auditoria são os
+    mesmos para todos os cérebros.
+    """
+
+    TENTATIVAS = 4
+
+    def __init__(self, cfg: Config, url: str, api_key: str, modelo: str, http: Any = None):
+        import httpx
+
+        self.cfg = cfg
+        self.modelo = modelo
+        self.http = http or httpx.Client(
+            base_url=url.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=90,
+        )
+
+    def _chamar(self, corpo: dict) -> dict:
+        import time
+
+        import httpx
+
+        ultimo = ""
+        for tentativa in range(self.TENTATIVAS):
+            try:
+                resp = self.http.post("/chat/completions", json=corpo)
+            except httpx.HTTPError as erro:
+                ultimo = f"falha de conexão: {erro}"
+                time.sleep(2 * (tentativa + 1))
+                continue
+            if resp.status_code == 200:
+                return resp.json()
+            try:
+                detalhe = resp.json().get("error", {})
+            except ValueError:
+                detalhe = {"message": resp.text[:300]}
+            ultimo = f"{resp.status_code}: {detalhe.get('message', '')}"
+            if resp.status_code == 429 or resp.status_code >= 500:
+                # Limite do plano gratuito (ou instabilidade): espera e tenta de novo.
+                espera = float(resp.headers.get("retry-after") or 0) or 5 * (tentativa + 1)
+                time.sleep(min(espera, 30))
+                continue
+            if resp.status_code == 400 and detalhe.get("code") == "tool_use_failed":
+                # O modelo gerou uma chamada de ferramenta malformada: pede de novo.
+                continue
+            if resp.status_code in (401, 403):
+                raise ErroProvedor("Chave de API recusada pelo provedor. Confira a GROQ_API_KEY.")
+            break
+        if ultimo.startswith("429"):
+            raise ErroProvedor("Limite do plano gratuito atingido. Espere um pouco e tente de novo. " + ultimo)
+        raise ErroProvedor(f"O provedor de IA respondeu com erro ({ultimo}).")
+
+    def responder(self, system: str, mensagens: list[dict], ferramentas: list[dict]) -> Resposta:
+        corpo = {
+            "model": self.modelo,
+            "messages": _para_formato_openai(system, mensagens),
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": f["name"], "description": f["description"], "parameters": f["input_schema"]},
+                }
+                for f in ferramentas
+            ],
+            "tool_choice": "auto",
+            "max_tokens": 4096,
+        }
+        dados = self._chamar(corpo)
+        escolha = dados["choices"][0]
+        msg = escolha["message"]
+        content: list[dict] = []
+        if msg.get("reasoning"):
+            # Alguns modelos devolvem o raciocínio à parte: mostramos no painel,
+            # mas ele não é reenviado ao provedor.
+            content.append({"type": "thinking", "thinking": msg["reasoning"]})
+        if msg.get("content"):
+            content.append({"type": "text", "text": msg["content"]})
+        for chamada in msg.get("tool_calls") or []:
+            try:
+                entrada = json.loads(chamada["function"].get("arguments") or "{}")
+            except ValueError:
+                entrada = None
+            if not isinstance(entrada, dict):
+                # JSON inválido vira uma entrada que as regras bloqueiam com a explicação.
+                entrada = {"argumentos_invalidos": str(chamada["function"].get("arguments"))[:500]}
+            content.append({"type": "tool_use", "id": chamada["id"], "name": chamada["function"]["name"], "input": entrada})
+
+        motivo = escolha.get("finish_reason")
+        tem_ferramenta = any(b["type"] == "tool_use" for b in content)
+        stop = "tool_use" if tem_ferramenta else {"length": "max_tokens", "content_filter": "refusal"}.get(motivo, "end_turn")
+        uso = dados.get("usage") or {}
+        return Resposta(
+            content=content,
+            stop_reason=stop,
+            tokens_entrada=int(uso.get("prompt_tokens", 0)),
+            tokens_saida=int(uso.get("completion_tokens", 0)),
+            custo_usd=0.0,  # plano gratuito
+            modelo=dados.get("model", self.modelo),
+            detalhes={"provedor": "groq"},
+        )
+
+
 # ========================================================== modo simulado
 def _normalizar(texto: str) -> str:
     sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()

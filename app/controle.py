@@ -312,6 +312,14 @@ class Controle:
             ).fetchone()
         return int(linha[0])
 
+    def custo_hoje(self) -> float:
+        with self._trava:
+            linha = self._conn.execute(
+                "SELECT COALESCE(SUM(custo_usd), 0) FROM execucoes WHERE criado_em >= ?",
+                (date.today().isoformat(),),
+            ).fetchone()
+        return float(linha[0])
+
     # ----------------------------------------------------------------- eventos
     def registrar(self, execucao_id: int, tipo: str, titulo: str, dados: Any = None) -> None:
         with self._trava:

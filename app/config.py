@@ -31,14 +31,35 @@ PRECOS_POR_MILHAO = {
     "claude-haiku-4-5": {"entrada": 1.00, "saida": 5.00},
 }
 
+# Provedores de IA. "compativel" = API no formato OpenAI (Groq e outros).
+PROVEDORES = {
+    "claude": {"nome": "Claude", "gratuito": False},
+    "groq": {
+        "nome": "Groq",
+        "gratuito": True,
+        "url": "https://api.groq.com/openai/v1",
+        # Modelo aberto com uso de ferramentas no plano gratuito do Groq.
+        "modelo": "openai/gpt-oss-120b",
+    },
+}
+
 
 @dataclass
 class Config:
-    # "simulado" roda sem internet e sem custo; "real" usa a API do Claude.
+    # Quem decide os passos do agente:
+    #   "simulado" = regras em Python, sem IA, sem internet, sem custo;
+    #   "claude"   = API do Claude (paga);
+    #   "groq"     = modelo aberto no Groq (plano gratuito, com limites de uso).
     modo: str = "simulado"
     anthropic_api_key: str = ""
     modelo: str = "claude-opus-5"
     esforco: str = "high"  # low | medium | high | xhigh | max
+    groq_api_key: str = ""
+    groq_modelo: str = PROVEDORES["groq"]["modelo"]
+    groq_url: str = PROVEDORES["groq"]["url"]
+    # Teto de gasto em dólares por dia para provedores pagos. 0 = não gastar nada.
+    limite_usd_dia: float = 1.0
+    aviso_modo: str = ""
 
     # Onde fica a API REST da loja (o "sistema da empresa" que o agente opera).
     loja_url: str = "http://127.0.0.1:8000/loja"
@@ -62,11 +83,23 @@ class Config:
         _carregar_dotenv(RAIZ / ".env")
         cfg = cls()
         cfg.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        cfg.groq_api_key = os.environ.get("GROQ_API_KEY", "")
+        cfg.groq_modelo = os.environ.get("GROQ_MODELO", cfg.groq_modelo)
         modo = os.environ.get("MODO_AGENTE", "").strip().lower()
-        if modo in ("simulado", "real"):
+        if modo == "real":  # nome antigo do modo Claude
+            modo = "claude"
+        if modo in ("simulado", "claude", "groq"):
             cfg.modo = modo
         elif cfg.anthropic_api_key:
-            cfg.modo = "real"
+            cfg.modo = "claude"
+        if cfg.modo == "groq" and not cfg.groq_api_key:
+            cfg.aviso_modo = "MODO_AGENTE=groq, mas GROQ_API_KEY está vazia: usando o modo simulado."
+            cfg.modo = "simulado"
+        if cfg.modo == "claude" and not cfg.anthropic_api_key:
+            cfg.aviso_modo = "MODO_AGENTE=claude, mas ANTHROPIC_API_KEY está vazia: usando o modo simulado."
+            cfg.modo = "simulado"
+        if os.environ.get("LIMITE_USD_DIA"):
+            cfg.limite_usd_dia = float(os.environ["LIMITE_USD_DIA"])
         cfg.modelo = os.environ.get("MODELO_CLAUDE", cfg.modelo)
         cfg.esforco = os.environ.get("ESFORCO_CLAUDE", cfg.esforco)
         cfg.loja_url = os.environ.get("LOJA_URL", cfg.loja_url).rstrip("/")
@@ -96,6 +129,10 @@ class Config:
         if self.loja_api_key == "dev-loja-123" or len(self.loja_api_key) < 16:
             problemas.append("LOJA_API_KEY precisa ser uma chave própria, com pelo menos 16 caracteres.")
         return problemas
+
+    @property
+    def modelo_em_uso(self) -> str:
+        return {"claude": self.modelo, "groq": self.groq_modelo}.get(self.modo, "simulado")
 
     def custo_usd(self, tokens_entrada: int, tokens_saida: int) -> float:
         preco = PRECOS_POR_MILHAO.get(self.modelo, PRECOS_POR_MILHAO["claude-opus-5"])

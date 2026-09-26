@@ -14,9 +14,12 @@ services:
       # Aceita conexões de fora do servidor (o Render informa a porta pela variável PORT).
       - key: HOST
         value: 0.0.0.0
-      # A demonstração pública roda sempre no modo simulado: sem chave, sem custo.
-      - key: MODO_AGENTE
-        value: simulado
+      # Interruptor da IA: não fica aqui de propósito, para o Render não desfazer
+      # a sua escolha a cada deploy. Em Environment, crie MODO_AGENTE com
+      # "simulado" (sem IA) ou "groq" (IA grátis; precisa de GROQ_API_KEY).
+      # Teto de gasto por dia com provedores pagos (Claude). 0 = nunca gastar.
+      - key: LIMITE_USD_DIA
+        value: "0"
       # Chave da API da loja gerada pelo Render, em vez da chave de exemplo.
       - key: LOJA_API_KEY
         generateValue: true

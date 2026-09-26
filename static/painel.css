@@ -409,3 +409,5 @@ textarea { resize: vertical; min-height: 120px; font-size: 1.02rem; margin-botto
 }
 .cartao-login input[type="password"]:focus { outline: none; border-color: var(--destaque); box-shadow: 0 0 0 3px var(--destaque-suave); }
 .sair { align-self: center; }
+
+.lateral-rodape .chip { white-space: normal; line-height: 1.35; border-radius: 10px; }

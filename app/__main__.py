@@ -31,7 +31,10 @@ def principal() -> None:
         raise SystemExit(1)
 
     endereco = f"http://127.0.0.1:{porta}"
-    print(f"Modo do agente: {cfg.modo}" + (f" ({cfg.modelo})" if cfg.modo == "real" else " (sem chave, sem custo)"))
+    if cfg.aviso_modo:
+        print(f"AVISO: {cfg.aviso_modo}")
+    descricao = {"claude": "API do Claude, paga", "groq": "Groq, plano gratuito"}.get(cfg.modo, "sem IA, sem custo")
+    print(f"Modo do agente: {cfg.modo} · {cfg.modelo_em_uso} ({descricao})")
     print(f"Painel: {endereco}")
     if os.environ.get("ABRIR_NAVEGADOR") == "1":
         threading.Timer(1.5, webbrowser.open, args=[endereco]).start()
