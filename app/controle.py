@@ -8,6 +8,8 @@ exemplo, por uma instrução maliciosa escondida num pedido).
 from __future__ import annotations
 
 import json
+import math
+import re
 import sqlite3
 import threading
 from dataclasses import dataclass
@@ -82,6 +84,23 @@ def controles_padrao() -> dict[str, Any]:
     }
 
 
+# Faixas aceitas para cada limite (valem sempre, local ou online).
+FAIXAS = {
+    "limite_reembolso": (0.0, 100_000.0),
+    "max_passos": (1, 50),
+    "orcamento_tokens_dia": (0, 10_000_000),
+}
+BOOLEANOS = ("agente_ativo", "email_somente_clientes")
+
+# Tamanho máximo dos textos que o agente pode mandar para a loja.
+LIMITES_TEXTO = {"busca": 100, "motivo": 500, "para": 254, "assunto": 200, "corpo": 5000}
+EMAIL_VALIDO = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,185}\.[A-Za-z]{2,24}$")
+
+
+class ControleInvalido(ValueError):
+    pass
+
+
 def _agora() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
@@ -93,8 +112,10 @@ class Decisao:
 
 
 class Controle:
-    def __init__(self, caminho: Path | str):
+    def __init__(self, caminho: Path | str, somente_mais_rigido: bool = False):
+        """somente_mais_rigido: online, nenhuma regra pode ficar mais frouxa que o padrão."""
         self.caminho = str(caminho)
+        self.somente_mais_rigido = somente_mais_rigido
         if self.caminho != ":memory:":
             Path(self.caminho).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.caminho, check_same_thread=False)
@@ -125,20 +146,50 @@ class Controle:
                     atuais[linha["chave"]] = valor
         return atuais
 
-    def atualizar_controles(self, mudancas: dict[str, Any]) -> dict[str, Any]:
+    def atualizar_controles(self, mudancas: Any) -> dict[str, Any]:
+        """Valida tudo antes de gravar: tipo, faixa e (online) se ficaria mais frouxo."""
+        if not isinstance(mudancas, dict):
+            raise ControleInvalido("Envie um objeto JSON com os controles a mudar.")
         atuais = self.controles()
+        padrao = controles_padrao()
         for chave, valor in mudancas.items():
             if chave not in atuais:
-                raise ValueError(f"Controle desconhecido: {chave}")
+                raise ControleInvalido(f"Controle desconhecido: {chave}")
             if chave == "ferramentas":
+                if not isinstance(valor, dict) or len(valor) > len(FERRAMENTAS):
+                    raise ControleInvalido("'ferramentas' deve ser um objeto por nome de ferramenta.")
                 for nome, conf in valor.items():
-                    if nome not in atuais["ferramentas"]:
-                        raise ValueError(f"Ferramenta desconhecida: {nome}")
-                    atuais["ferramentas"][nome].update(
-                        {k: bool(v) for k, v in conf.items() if k in ("ativa", "exige_aprovacao")}
-                    )
+                    if nome not in atuais["ferramentas"] or not isinstance(conf, dict):
+                        raise ControleInvalido(f"Ferramenta desconhecida: {nome}")
+                    for campo, v in conf.items():
+                        if campo not in ("ativa", "exige_aprovacao") or not isinstance(v, bool):
+                            raise ControleInvalido(f"{nome}.{campo}: use true ou false.")
+                        if (self.somente_mais_rigido and campo == "exige_aprovacao"
+                                and padrao["ferramentas"][nome]["exige_aprovacao"] and not v):
+                            raise ControleInvalido(
+                                f"Na versão online não é possível tirar a aprovação humana de '{nome}'."
+                            )
+                        atuais["ferramentas"][nome][campo] = v
+            elif chave in BOOLEANOS:
+                if not isinstance(valor, bool):
+                    raise ControleInvalido(f"{chave}: use true ou false.")
+                if self.somente_mais_rigido and chave == "email_somente_clientes" and not valor:
+                    raise ControleInvalido("Na versão online os e-mails só podem ir para clientes cadastrados.")
+                atuais[chave] = valor
             else:
-                atuais[chave] = type(controles_padrao()[chave])(valor)
+                minimo, maximo = FAIXAS[chave]
+                tipo_ok = isinstance(valor, (int, float)) and not isinstance(valor, bool)
+                if isinstance(minimo, int) and tipo_ok and float(valor).is_integer():
+                    valor = int(valor)
+                elif isinstance(minimo, int):
+                    tipo_ok = False
+                if not tipo_ok or not math.isfinite(valor) or not minimo <= valor <= maximo:
+                    raise ControleInvalido(f"{chave}: use um número entre {minimo} e {maximo}.")
+                if self.somente_mais_rigido and valor > padrao[chave]:
+                    raise ControleInvalido(
+                        f"Na versão online {chave} não pode passar de {padrao[chave]} (só dá para deixar mais rígido)."
+                    )
+                atuais[chave] = valor
         with self._trava:
             for chave, valor in atuais.items():
                 self._conn.execute(
@@ -154,6 +205,7 @@ class Controle:
         entrada: Any,
         controles: dict[str, Any],
         eh_cliente: Callable[[str], bool] | None = None,
+        consultar_pedido: Callable[[int], dict | None] | None = None,
     ) -> Decisao:
         """Decide se uma chamada de ferramenta roda, espera aprovação ou é bloqueada."""
         ferramenta = FERRAMENTAS.get(nome)
@@ -165,12 +217,34 @@ class Controle:
         erros = validar_entrada(ferramenta.schema, entrada)
         if erros:
             return Decisao("bloquear", "Entrada inválida: " + "; ".join(erros))
-        if nome == "reembolsar_pedido" and entrada["valor"] > controles["limite_reembolso"]:
-            return Decisao(
-                "bloquear",
-                f"Reembolso de R$ {entrada['valor']:.2f} passa do limite do agente "
-                f"(R$ {controles['limite_reembolso']:.2f}). Precisa ser feito por uma pessoa.",
-            )
+        for campo, limite in LIMITES_TEXTO.items():
+            if isinstance(entrada.get(campo), str) and len(entrada[campo]) > limite:
+                return Decisao("bloquear", f"'{campo}' passa do tamanho máximo de {limite} caracteres.")
+        if nome == "reembolsar_pedido":
+            valor, limite = entrada["valor"], controles["limite_reembolso"]
+            if valor <= 0:
+                return Decisao("bloquear", "O valor do reembolso precisa ser positivo.")
+            if valor > limite:
+                return Decisao(
+                    "bloquear",
+                    f"Reembolso de R$ {valor:.2f} passa do limite do agente "
+                    f"(R$ {limite:.2f}). Precisa ser feito por uma pessoa.",
+                )
+            if consultar_pedido is not None:
+                # O limite vale para a soma dos reembolsos do pedido: não dá para
+                # contornar pedindo vários reembolsos pequenos.
+                pedido = consultar_pedido(entrada["pedido_id"])
+                if pedido is None:
+                    return Decisao("bloquear", "Não foi possível conferir os reembolsos anteriores deste pedido.")
+                total = pedido["total_reembolsado"] + valor
+                if total > limite:
+                    return Decisao(
+                        "bloquear",
+                        f"Somando os reembolsos anteriores, o pedido chegaria a R$ {total:.2f}, acima do "
+                        f"limite do agente (R$ {limite:.2f}). Precisa ser feito por uma pessoa.",
+                    )
+        if nome == "enviar_email" and not EMAIL_VALIDO.match(entrada["para"]):
+            return Decisao("bloquear", f"Endereço de e-mail inválido: {entrada['para']!r}.")
         if nome == "enviar_email" and controles["email_somente_clientes"] and eh_cliente is not None:
             if not eh_cliente(entrada["para"]):
                 return Decisao("bloquear", f"'{entrada['para']}' não é e-mail de um cliente cadastrado.")

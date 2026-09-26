@@ -20,3 +20,10 @@ services:
       # Chave da API da loja gerada pelo Render, em vez da chave de exemplo.
       - key: LOJA_API_KEY
         generateValue: true
+      # Senha do painel. O Render sorteia uma senha forte; veja (ou troque por
+      # uma sua, com 12+ caracteres) em Environment. Sem ela o servidor não sobe.
+      - key: SENHA_OPERADOR
+        generateValue: true
+      # Assina os cookies de login (assim o login sobrevive quando o serviço reinicia).
+      - key: SEGREDO_SESSAO
+        generateValue: true

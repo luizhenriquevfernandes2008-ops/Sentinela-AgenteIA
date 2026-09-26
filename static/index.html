@@ -55,6 +55,7 @@
         <span id="modo" class="chip">…</span>
         <span id="estado-agente" class="status"><i></i><span>…</span></span>
         <button id="btn-pausa" class="botao bloco" type="button">Pausar agente</button>
+        <button id="btn-sair" class="link sair" type="button" hidden>Sair</button>
       </div>
     </aside>
 
@@ -220,6 +221,23 @@
   </div>
 
   <div id="aviso" class="aviso" role="status" hidden></div>
+
+  <!-- Tela de login: aparece quando o servidor exige senha (versão online). -->
+  <div id="tela-login" class="tela-login" hidden>
+    <form id="form-login" class="cartao-login">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 2 4 7v8c0 7.4 5.1 13.4 12 15 6.9-1.6 12-7.6 12-15V7L16 2z" fill="currentColor"/>
+        <path d="m11 16 3.5 3.5L21.5 12" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1>Sentinela</h1>
+      <p>Área do operador. Entre com a senha para controlar o agente.</p>
+      <label class="campo">Senha
+        <input type="password" id="senha" autocomplete="current-password" required maxlength="200">
+      </label>
+      <button class="botao primario grande bloco" type="submit">Entrar</button>
+      <p id="erro-login" class="erro" role="alert" hidden></p>
+    </form>
+  </div>
 
   <script src="/static/painel.js"></script>
 </body>

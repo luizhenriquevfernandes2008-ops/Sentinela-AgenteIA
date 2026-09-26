@@ -148,7 +148,7 @@ def test_orcamento_de_tokens(cliente):
 
 def test_cancelar_execucao_rejeita_pendentes(cliente, app):
     ex = rodar(cliente, "Cancele o pedido 1003")
-    assert cliente.post(f"/api/execucoes/{ex['id']}/cancelar").status_code == 200
+    assert cliente.post(f"/api/execucoes/{ex['id']}/cancelar", json={}).status_code == 200
     assert pendentes(cliente) == []
     assert cliente.get(f"/api/execucoes/{ex['id']}").json()["status"] == "cancelada"
     assert app.state.loja.pedido(1003)["status"] == "pendente"
@@ -172,7 +172,7 @@ def test_metricas(cliente):
 def test_restaurar_demo(cliente, app):
     rodar(cliente, "Cancele o pedido 1003")
     cliente.put("/api/controles", json={"max_passos": 3})
-    assert cliente.post("/api/demo/resetar").status_code == 200
+    assert cliente.post("/api/demo/resetar", json={}).status_code == 200
     assert cliente.get("/api/execucoes").json() == []
     assert pendentes(cliente) == []
     assert cliente.get("/api/controles").json()["max_passos"] == 10

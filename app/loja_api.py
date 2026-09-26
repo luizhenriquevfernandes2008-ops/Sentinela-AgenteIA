@@ -5,6 +5,8 @@ Toda chamada exige o cabeçalho X-API-Key, como numa integração real.
 
 from __future__ import annotations
 
+import hmac
+
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -37,11 +39,19 @@ class Email(BaseModel):
     corpo: str = Field(min_length=1)
 
 
-def criar_app_loja(loja: Loja, api_key: str) -> FastAPI:
-    app = FastAPI(title="Loja Fictícia — API", version="1.0")
+def criar_app_loja(loja: Loja, api_key: str, documentacao: bool = True) -> FastAPI:
+    app = FastAPI(
+        title="Loja Fictícia — API",
+        version="1.0",
+        docs_url="/docs" if documentacao else None,
+        redoc_url="/redoc" if documentacao else None,
+        openapi_url="/openapi.json" if documentacao else None,
+    )
 
     def exigir_chave(x_api_key: str | None = Header(default=None)) -> None:
-        if x_api_key != api_key:
+        # compare_digest leva o mesmo tempo acerte ou erre: não dá para descobrir
+        # a chave caractere por caractere medindo o tempo de resposta.
+        if x_api_key is None or not hmac.compare_digest(x_api_key.encode(), api_key.encode()):
             raise HTTPException(status_code=401, detail="X-API-Key ausente ou inválida.")
 
     @app.exception_handler(ErroLoja)

@@ -166,6 +166,12 @@ class Agente:
             return False
         return any(c["email"].lower() == email.strip().lower() for c in clientes)
 
+    def _consultar_pedido(self, pedido_id: int) -> dict | None:
+        try:
+            return self.loja.consultar_pedido(pedido_id)
+        except ErroFerramenta:
+            return None
+
     def _executar(self, eid: int, chamada: dict) -> dict:
         nome, entrada = chamada["name"], chamada["input"]
         try:
@@ -196,7 +202,7 @@ class Agente:
             self.controle.registrar(
                 eid, "chamada", f"Quer usar {chamada['name']}", {"ferramenta": chamada["name"], "entrada": chamada["input"]}
             )
-            decisao = self.controle.avaliar(chamada["name"], chamada["input"], ctrl, self._eh_cliente)
+            decisao = self.controle.avaliar(chamada["name"], chamada["input"], ctrl, self._eh_cliente, self._consultar_pedido)
             if decisao.acao == "permitir":
                 resultados.append(self._executar(eid, chamada))
             elif decisao.acao == "bloquear":
@@ -237,7 +243,7 @@ class Agente:
                 # As regras são reavaliadas na hora de executar: os controles
                 # podem ter mudado enquanto a ação esperava aprovação.
                 ctrl = self.controle.controles()
-                decisao = self.controle.avaliar(chamada["name"], chamada["input"], ctrl, self._eh_cliente)
+                decisao = self.controle.avaliar(chamada["name"], chamada["input"], ctrl, self._eh_cliente, self._consultar_pedido)
                 if decisao.acao == "bloquear":
                     resultado = self._bloqueio(eid, chamada, decisao.motivo)
                 else:

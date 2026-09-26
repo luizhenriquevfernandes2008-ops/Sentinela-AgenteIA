@@ -9,6 +9,7 @@ Cada ferramenta tem:
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -133,6 +134,8 @@ def validar_entrada(schema: dict, valor: Any, caminho: str = "entrada") -> list[
     esperado = _TIPOS.get(tipo)
     if esperado and (not isinstance(valor, esperado) or (tipo in ("integer", "number") and isinstance(valor, bool))):
         return [f"{caminho}: esperado {tipo}, recebido {type(valor).__name__}"]
+    if tipo in ("integer", "number") and not math.isfinite(valor):
+        return [f"{caminho}: número inválido"]
     if tipo == "object":
         for campo in schema.get("required", []):
             if campo not in valor:

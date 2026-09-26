@@ -3,7 +3,7 @@
 [![testes](https://github.com/luizhenriquevfernandes2008-ops/Sentinela-AgenteIA/actions/workflows/testes.yml/badge.svg)](https://github.com/luizhenriquevfernandes2008-ops/Sentinela-AgenteIA/actions/workflows/testes.yml)
 [![online](https://img.shields.io/badge/demonstra%C3%A7%C3%A3o-online-0e6f7f)](https://sentinela-4h76.onrender.com)
 
-**▶ Experimente online: <https://sentinela-4h76.onrender.com>** (modo simulado, sem instalar nada; o primeiro acesso pode levar cerca de um minuto)
+**▶ Versão online: <https://sentinela-4h76.onrender.com>** — área do operador, protegida por senha (modo simulado; o primeiro acesso pode levar cerca de um minuto). Para testar sem senha, rode no seu computador (instruções abaixo).
 
 Projeto de estudo, feito com a ajuda de IA, para aprender na prática como **integrar IA em projetos reais**
 usando **Python** e **SQL**.
@@ -97,10 +97,11 @@ Sem chave, o agente usa o **cérebro simulado**: um planejador por regras que de
 python -m pytest -q
 ```
 
-São 25 testes. Eles cobrem a API da loja, o fluxo de aprovação (aprovar, rejeitar e decidir duas vezes),
+São 53 testes. Eles cobrem a API da loja, o fluxo de aprovação (aprovar, rejeitar e decidir duas vezes),
 cada regra, os limites, o cancelamento e a restauração da demonstração, além do **modo real com a API
 do Claude simulada no nível HTTP**. Neste último, o SDK oficial monta a requisição de verdade, então o
-teste confere o que seria enviado à Anthropic. Os testes também rodam no GitHub a cada push.
+teste confere o que seria enviado à Anthropic. Os testes de segurança (`tests/test_seguranca.py`) refazem
+cada ataque descrito na seção **Segurança** e confirmam que ele é barrado. Tudo roda no GitHub a cada push.
 
 ---
 
@@ -109,7 +110,8 @@ teste confere o que seria enviado à Anthropic. Os testes também rodam no GitHu
 A demonstração oficial está em <https://sentinela-4h76.onrender.com>. Para publicar a sua própria cópia:
 
 O repositório já traz o `render.yaml`, que configura tudo sozinho. A versão online roda sempre no
-**modo simulado**, então não gasta nada nem expõe chave nenhuma.
+**modo simulado**, então não gasta nada nem expõe chave nenhuma, e o painel fica **atrás de uma senha**
+(`SENHA_OPERADOR`, que o Render sorteia; você pode trocar por uma sua em **Environment**).
 
 1. Crie uma conta em <https://render.com> entrando com o GitHub.
 2. No painel do Render, clique em **New → Blueprint** e escolha o repositório `Sentinela-AgenteIA`.
@@ -141,6 +143,32 @@ Use os exemplos do painel:
 | Aba "Loja": o efeito real das ações | Tema escuro automático |
 |---|---|
 | ![Aba Loja](docs/painel-loja.png) | ![Tema escuro](docs/painel-escuro.png) |
+
+---
+
+## Segurança
+
+Publicado na internet, o painel é o "humano no controle" do agente: quem mexe nele aprova reembolsos e
+muda as regras. Por isso, a versão online foi testada com ataques reais, e cada um virou um teste automático.
+
+| Ataque | Proteção |
+|---|---|
+| Ver dados de clientes, aprovar ações ou mudar regras sem ser o operador | **Login com senha** em tudo que fica em `/api`. O servidor **se recusa a subir** online sem uma senha de 12+ caracteres |
+| Adivinhar a senha | Comparação em tempo constante e **bloqueio após 5 erros** por IP (30 no total) por 15 minutos |
+| Roubar ou forjar a sessão | Cookie assinado com HMAC, `HttpOnly`, `SameSite=Strict` e `Secure`; o logout invalida o token no servidor |
+| Afrouxar as regras (tirar a aprovação de reembolso, subir limites) | Online, as regras **só podem ficar mais rígidas** que o padrão seguro |
+| Valores absurdos nos controles (`"nan"`, negativos, `"false"` em texto) | Validação de tipo e de faixa em cada controle |
+| Burlar o limite de reembolso pedindo vários valores pequenos | O limite vale para a **soma dos reembolsos do pedido** |
+| Outro site agir em nome do operador (CSRF) | Toda alteração exige `application/json` e origem do próprio site |
+| Injeção de HTML/JavaScript (XSS) e clickjacking | Todo texto é escapado; `Content-Security-Policy`, `X-Frame-Options: DENY`, `nosniff` |
+| Enxurrada de tarefas ou requisições gigantes | 20 tarefas por minuto por pessoa (60 no total) e corpo de até 64 KB |
+| Chamar a API da loja direto | Chave `X-API-Key` sorteada pelo Render, comparada em tempo constante; a chave de exemplo é recusada online |
+| Mapear a API | Documentação interativa (`/docs`) desligada online e sem o cabeçalho `Server` |
+| E-mail com cabeçalho injetado ou para fora | Formato de e-mail validado e só para clientes cadastrados; tamanho máximo para cada texto |
+| *Prompt injection* (pedido 1005) | Regras em código, fora do modelo: valem mesmo se o modelo for enganado |
+
+Também foi verificado que não há injeção de SQL (todas as consultas são parametrizadas) nem leitura de
+arquivos do servidor por `../`. Os dados da loja são fictícios.
 
 ---
 

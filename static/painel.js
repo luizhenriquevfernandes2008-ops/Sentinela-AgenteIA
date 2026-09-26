@@ -79,6 +79,7 @@ async function api(caminho, opcoes = {}) {
     body: opcoes.body ? JSON.stringify(opcoes.body) : undefined,
   });
   const dados = await resp.json().catch(() => ({}));
+  if (resp.status === 401 && caminho !== "/api/login") mostrarLogin();
   if (!resp.ok) throw new Error(dados.detail || `Erro ${resp.status}`);
   return dados;
 }
@@ -552,9 +553,53 @@ async function ciclo() {
   }
 }
 
-(async () => {
+// ==================================================================== login
+let cicloAtivo = null;
+
+function mostrarLogin() {
+  if (cicloAtivo) clearInterval(cicloAtivo);
+  cicloAtivo = null;
+  $("#tela-login").hidden = false;
+  $("#senha").value = "";
+  setTimeout(() => $("#senha").focus(), 50);
+}
+
+async function iniciarPainel() {
+  $("#tela-login").hidden = true;
   await atualizarStatus().catch(console.error);
   mostrarPagina(paginaDoEndereco());
   await ciclo();
-  setInterval(ciclo, 1500);
+  if (!cicloAtivo) cicloAtivo = setInterval(ciclo, 1500);
+}
+
+$("#form-login").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const erro = $("#erro-login");
+  const botao = $("#form-login button[type=submit]");
+  erro.hidden = true;
+  botao.disabled = true;
+  try {
+    await api("/api/login", { method: "POST", body: { senha: $("#senha").value } });
+    estado.pendentesVistas = null;
+    estado.assinaturas = {};
+    await iniciarPainel();
+  } catch (e) {
+    erro.textContent = e.message;
+    erro.hidden = false;
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+$("#btn-sair").addEventListener("click", async () => {
+  await api("/api/logout", { method: "POST", body: {} }).catch(() => {});
+  mostrarLogin();
+});
+
+(async () => {
+  let sessao = { login_necessario: false, autenticado: true };
+  try { sessao = await api("/api/sessao"); } catch (e) { console.error(e); }
+  $("#btn-sair").hidden = !sessao.login_necessario;
+  if (sessao.autenticado) await iniciarPainel();
+  else mostrarLogin();
 })();
