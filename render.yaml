@@ -7,7 +7,7 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python -m app
-    healthCheckPath: /api/status
+    healthCheckPath: /api/saude
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9

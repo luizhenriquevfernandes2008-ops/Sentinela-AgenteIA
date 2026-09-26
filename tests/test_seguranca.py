@@ -54,6 +54,12 @@ def test_nao_publica_com_chave_da_loja_de_exemplo(cfg):
 
 
 # ------------------------------------------------------------------- login
+def test_saude_publica_sem_dados(visitante):
+    # O Render verifica esta rota para saber se o deploy subiu: precisa responder sem login.
+    resp = visitante.get("/api/saude")
+    assert resp.status_code == 200 and resp.json() == {"ok": True}
+
+
 def test_sem_login_nada_de_dados(visitante):
     assert visitante.get("/api/sessao").json() == {"login_necessario": True, "autenticado": False}
     for rota in ["/api/loja", "/api/status", "/api/execucoes", "/api/aprovacoes", "/api/controles", "/api/metricas"]:

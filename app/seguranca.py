@@ -24,7 +24,7 @@ from .config import Config
 
 COOKIE_SESSAO = "sentinela_sessao"
 TAMANHO_MAXIMO_CORPO = 64 * 1024  # 64 KB: nenhuma requisição legítima do painel chega perto
-ROTAS_SEM_LOGIN = {"/api/sessao", "/api/login"}
+ROTAS_SEM_LOGIN = {"/api/saude", "/api/sessao", "/api/login"}
 METODOS_QUE_ALTERAM = {"POST", "PUT", "PATCH", "DELETE"}
 
 CSP = (

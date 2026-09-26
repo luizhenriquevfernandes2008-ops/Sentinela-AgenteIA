@@ -90,6 +90,12 @@ def criar_app(
     tarefas_por_pessoa = Limitador(20, 60)
     tarefas_no_total = Limitador(60, 60)
 
+    # ------------------------------------------------------------------ saúde
+    @app.get("/api/saude")
+    def saude() -> dict[str, bool]:
+        """Usada pelo Render para saber se o servidor está no ar. Não expõe nenhum dado."""
+        return {"ok": True}
+
     # ------------------------------------------------------------------ login
     @app.get("/api/sessao")
     def sessao(request: Request) -> dict[str, bool]:
