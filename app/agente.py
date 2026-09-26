@@ -47,6 +47,10 @@ class Agente:
         self._travas: dict[int, threading.Lock] = {}
         self._trava_global = threading.Lock()
 
+    def trocar_cerebro(self, cerebro: Cerebro, modo: str, modelo: str, gratuito: bool) -> None:
+        """Liga/desliga a IA sem reiniciar o servidor (usado pela aba Controles)."""
+        self.cerebro, self.modo, self.modelo, self.gratuito = cerebro, modo, modelo, gratuito
+
     def _trava(self, execucao_id: int) -> threading.Lock:
         with self._trava_global:
             return self._travas.setdefault(execucao_id, threading.Lock())
@@ -74,11 +78,14 @@ class Agente:
                 self.controle.registrar(execucao_id, "erro", "Erro inesperado", {"erro": f"{type(erro).__name__}: {erro}"})
                 return "erro"
 
-    def _parar(self, eid: int, status: str, tipo: str, titulo: str, dados: dict | None = None) -> str:
+    def _parar(
+        self, eid: int, status: str, tipo: str, titulo: str, dados: dict | None = None, resposta: str | None = None
+    ) -> str:
         atual = self.controle.execucao(eid)["status"]
         if atual == "cancelada":  # o operador cancelou enquanto o modelo pensava
             return atual
-        self.controle.atualizar_execucao(eid, status=status, resposta_final=titulo)
+        # Status e resposta gravados juntos: o painel nunca vê um sem o outro.
+        self.controle.atualizar_execucao(eid, status=status, resposta_final=resposta if resposta is not None else titulo)
         self.controle.registrar(eid, tipo, titulo, dados)
         return status
 
@@ -148,10 +155,7 @@ class Agente:
             chamadas = [b for b in resp.content if b.get("type") == "tool_use"]
             if not chamadas:
                 final = "\n".join(b["text"] for b in resp.content if b.get("type") == "text").strip()
-                status = self._parar(eid, "concluida", "fim", "Concluída", {"texto": final})
-                if status == "concluida":
-                    self.controle.atualizar_execucao(eid, resposta_final=final)
-                return status
+                return self._parar(eid, "concluida", "fim", "Concluída", {"texto": final}, resposta=final)
 
             if self.controle.execucao(eid)["status"] == "cancelada":
                 return "cancelada"

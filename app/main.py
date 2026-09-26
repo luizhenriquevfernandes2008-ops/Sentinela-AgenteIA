@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import hmac
+import re
+from typing import Literal
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
@@ -14,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .agente import Agente, AgentePausado
-from .cerebro import Cerebro, CerebroClaude, CerebroCompativel, CerebroSimulado
+from .cerebro import Cerebro, CerebroClaude, CerebroCompativel, CerebroSimulado, ErroProvedor
 from .config import PROVEDORES, Config
 from .controle import Controle, ControleInvalido
 from .ferramentas import FERRAMENTAS, ClienteLoja
@@ -33,6 +35,14 @@ class Login(BaseModel):
     senha: str = Field(min_length=1, max_length=200)
 
 
+class AjusteIA(BaseModel):
+    modo: Literal["simulado", "groq"]
+    chave: str | None = Field(default=None, max_length=300)
+
+
+CHAVE_GROQ = re.compile(r"gsk_[A-Za-z0-9_-]{20,200}")
+
+
 class Decisao(BaseModel):
     aprovar: bool
     comentario: str = Field(default="", max_length=500)
@@ -42,6 +52,7 @@ def criar_app(
     cfg: Config | None = None,
     http_loja: httpx.Client | None = None,
     cerebro: Cerebro | None = None,
+    http_ia: httpx.Client | None = None,
 ) -> FastAPI:
     cfg = cfg or Config.do_ambiente()
     problemas = cfg.problemas_de_publicacao()
@@ -55,18 +66,50 @@ def criar_app(
 
     if cfg.modo == "real":  # nome antigo do modo Claude
         cfg.modo = "claude"
-    if cerebro is None:
-        if cfg.modo == "claude":
-            cerebro = CerebroClaude(cfg)
-        elif cfg.modo == "groq":
-            cerebro = CerebroCompativel(cfg, cfg.groq_url, cfg.groq_api_key, cfg.groq_modelo)
-        else:
-            cerebro = CerebroSimulado()
-    modo = "simulado" if isinstance(cerebro, CerebroSimulado) else "real"
-    provedor = PROVEDORES.get(cfg.modo, {"nome": "Simulado", "gratuito": True})
+
+    def montar_cerebro(modo_ia: str, chave: str = "") -> Cerebro:
+        if modo_ia == "claude":
+            return CerebroClaude(cfg)
+        if modo_ia == "groq":
+            return CerebroCompativel(cfg, cfg.groq_url, chave, cfg.groq_modelo, http=http_ia)
+        return CerebroSimulado()
+
+    # Estado da IA em uso. Pode mudar com o servidor ligado (aba Controles).
+    ia: dict[str, Any] = {}
+
+    def descrever_ia(modo_ia: str, origem: str) -> tuple[str, str, bool]:
+        info = PROVEDORES.get(modo_ia, {"nome": "Simulado", "gratuito": True})
+        real = modo_ia in ("claude", "groq")
+        modelo = {"claude": cfg.modelo, "groq": cfg.groq_modelo}.get(modo_ia, "simulado")
+        ia.update(
+            modo_ia=modo_ia, modo="real" if real else "simulado", provedor=info["nome"],
+            gratuito=info["gratuito"], modelo=modelo, origem=origem,
+        )
+        return ia["modo"], modelo, info["gratuito"]
+
+    # Prioridade: um cérebro passado pelo código (testes) > o que o operador
+    # salvou no painel > as variáveis de ambiente.
+    salvo = controle.ler_ajuste("ia") or {}
+    if cerebro is not None:
+        modo_ia, origem = ("simulado" if isinstance(cerebro, CerebroSimulado) else cfg.modo), "servidor"
+    elif salvo.get("modo") == "groq" and salvo.get("chave"):
+        modo_ia, origem = "groq", "painel"
+        cerebro = montar_cerebro("groq", salvo["chave"])
+    elif salvo.get("modo") == "simulado":
+        modo_ia, origem = "simulado", "painel"
+        cerebro = CerebroSimulado()
+    else:
+        modo_ia, origem = cfg.modo, "servidor"
+        cerebro = montar_cerebro(cfg.modo, cfg.groq_api_key)
+    modo, modelo, gratuito = descrever_ia(modo_ia, origem)
+
     # O agente fala com a loja por HTTP, como falaria com um sistema externo.
     cliente_loja = ClienteLoja(http_loja or httpx.Client(base_url=cfg.loja_url, timeout=15), cfg.loja_api_key)
     agente = Agente(cfg, controle, cliente_loja, cerebro, modo)
+    agente.trocar_cerebro(cerebro, modo, modelo, gratuito)
+
+    def aplicar_ia(modo_ia: str, novo: Cerebro, origem: str) -> None:
+        agente.trocar_cerebro(novo, *descrever_ia(modo_ia, origem))
 
     app = FastAPI(
         title="Sentinela — agente de IA com controle humano",
@@ -89,6 +132,8 @@ def criar_app(
     # Enxurrada de tarefas: 20 por minuto por pessoa e 60 no total.
     tarefas_por_pessoa = Limitador(20, 60)
     tarefas_no_total = Limitador(60, 60)
+    # Cada validação de chave consulta o Groq: no máximo 10 por minuto.
+    validacoes_de_chave = Limitador(10, 60)
 
     # ------------------------------------------------------------------ saúde
     @app.get("/api/saude")
@@ -130,13 +175,17 @@ def criar_app(
 
     # ----------------------------------------------------------------- status
     @app.get("/api/status")
-    def status() -> dict[str, Any]:
+    def status(request: Request) -> dict[str, Any]:
+        # Sem login, só diz que está no ar (o Render usa isso para saber se o deploy subiu).
+        if cfg.exige_login and sessoes.identificador(request.cookies.get(COOKIE_SESSAO)) is None:
+            return {"ok": True}
         return {
-            "modo": modo,
-            "provedor": provedor["nome"],
-            "gratuito": provedor["gratuito"],
-            "modelo": agente.modelo,
-            "aviso": cfg.aviso_modo,
+            "ok": True,
+            "modo": ia["modo"],
+            "provedor": ia["provedor"],
+            "gratuito": ia["gratuito"],
+            "modelo": ia["modelo"],
+            "aviso": cfg.aviso_modo if ia["origem"] == "servidor" else "",
             "agente_ativo": controle.controles()["agente_ativo"],
             "ferramentas": {n: {"risco": f.risco, "descricao": f.descricao} for n, f in FERRAMENTAS.items()},
         }
@@ -210,7 +259,62 @@ def criar_app(
 
     @app.get("/api/metricas")
     def metricas() -> dict[str, Any]:
-        return {**controle.metricas(), "modo": modo, "provedor": provedor["nome"], "gratuito": provedor["gratuito"]}
+        return {**controle.metricas(), "modo": ia["modo"], "provedor": ia["provedor"], "gratuito": ia["gratuito"]}
+
+    # ------------------------------------------------------ IA (aba Controles)
+    def chave_salva() -> str:
+        return (controle.ler_ajuste("ia") or {}).get("chave", "")
+
+    def resumo_ia() -> dict[str, Any]:
+        chave = chave_salva() or cfg.groq_api_key
+        return {
+            "modo": ia["modo_ia"],
+            "provedor": ia["provedor"],
+            "modelo": ia["modelo"],
+            "gratuito": ia["gratuito"],
+            # A chave nunca volta para o navegador: só os 4 últimos caracteres.
+            "chave_configurada": bool(chave),
+            "chave_final": chave[-4:] if chave else "",
+            "chave_pelo_painel": bool(chave_salva()),
+            # No Render grátis o disco é apagado quando o site hiberna ou reinicia.
+            "guardada_temporariamente": cfg.publico,
+        }
+
+    @app.get("/api/ia")
+    def obter_ia() -> dict[str, Any]:
+        return resumo_ia()
+
+    @app.put("/api/ia")
+    def ajustar_ia(dados: AjusteIA, request: Request) -> dict[str, Any]:
+        if dados.modo == "simulado":
+            controle.gravar_ajuste("ia", {"modo": "simulado", "chave": chave_salva()})
+            aplicar_ia("simulado", CerebroSimulado(), "painel")
+            return resumo_ia()
+
+        chave = (dados.chave or "").strip() or chave_salva() or cfg.groq_api_key
+        if not chave:
+            raise HTTPException(400, "Cole a chave do Groq para ligar a IA.")
+        if not CHAVE_GROQ.fullmatch(chave):
+            raise HTTPException(400, "Isso não parece uma chave do Groq (ela começa com gsk_).")
+        pessoa = getattr(request.state, "sessao", None) or ip_do_cliente(request, cfg)
+        if not validacoes_de_chave.tentar(pessoa):
+            raise HTTPException(429, "Muitas tentativas. Espere um minuto.")
+        novo = montar_cerebro("groq", chave)
+        try:
+            novo.validar()
+        except ErroProvedor as erro:
+            raise HTTPException(400, str(erro))
+        controle.gravar_ajuste("ia", {"modo": "groq", "chave": chave})
+        aplicar_ia("groq", novo, "painel")
+        print("IA ligada pelo painel: Groq ·", cfg.groq_modelo)  # sem imprimir a chave
+        return resumo_ia()
+
+    @app.delete("/api/ia/chave")
+    def remover_chave() -> dict[str, Any]:
+        controle.apagar_ajuste("ia")
+        # Volta ao que as variáveis de ambiente dizem (simulado, se não houver chave lá).
+        aplicar_ia(cfg.modo, montar_cerebro(cfg.modo, cfg.groq_api_key), "servidor")
+        return resumo_ia()
 
     # ------------------------------------------------- visão da loja (painel)
     @app.get("/api/loja")

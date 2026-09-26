@@ -122,7 +122,7 @@ OpenAI na hora de cada chamada (`CerebroCompativel`), então qualquer provedor c
 python -m pytest -q
 ```
 
-São 61 testes. Eles cobrem a API da loja, o fluxo de aprovação (aprovar, rejeitar e decidir duas vezes),
+São 71 testes. Eles cobrem a API da loja, o fluxo de aprovação (aprovar, rejeitar e decidir duas vezes),
 cada regra, os limites, o cancelamento e a restauração da demonstração, além do **modo real com a API
 do Claude simulada no nível HTTP**. Neste último, o SDK oficial monta a requisição de verdade, então o
 teste confere o que seria enviado à Anthropic. Os testes de segurança (`tests/test_seguranca.py`) refazem
@@ -138,8 +138,11 @@ O repositório já traz o `render.yaml`, que configura tudo sozinho. A versão o
 **modo simulado** até você ligar a IA, e o painel fica **atrás de uma senha** (`SENHA_OPERADOR`, que o Render
 sorteia; você pode trocar por uma sua em **Environment**). `LIMITE_USD_DIA=0` impede qualquer gasto com o Claude.
 
-Para ligar a IA grátis online: em **Environment**, adicione `GROQ_API_KEY` com a sua chave e `MODO_AGENTE` = `groq`,
-e salve (o Render faz um novo deploy). Para desligar, volte `MODO_AGENTE` para `simulado`.
+**Para ligar a IA grátis online, não precisa mexer no Render:** entre no painel com a senha, vá em
+**Controles → Inteligência artificial**, cole a chave do Groq e toque em **Ligar IA**. A chave é conferida com o
+Groq na hora, fica só no servidor e o painel mostra apenas os 4 últimos caracteres. No plano grátis do Render o
+disco é apagado quando o site hiberna ou é atualizado; se a IA desligar sozinha, é só colar a chave de novo.
+(Para que ela nunca se perca, dá para colocar `GROQ_API_KEY` e `MODO_AGENTE=groq` em **Environment**.)
 
 1. Crie uma conta em <https://render.com> entrando com o GitHub.
 2. No painel do Render, clique em **New → Blueprint** e escolha o repositório `Sentinela-AgenteIA`.

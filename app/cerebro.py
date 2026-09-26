@@ -179,6 +179,19 @@ class CerebroCompativel:
             raise ErroProvedor("Limite do plano gratuito atingido. Espere um pouco e tente de novo. " + ultimo)
         raise ErroProvedor(f"O provedor de IA respondeu com erro ({ultimo}).")
 
+    def validar(self) -> None:
+        """Confere se a chave funciona, sem gastar tokens (só lista os modelos)."""
+        import httpx
+
+        try:
+            resp = self.http.get("/models")
+        except httpx.HTTPError as erro:
+            raise ErroProvedor(f"Não consegui falar com o provedor de IA: {erro}") from erro
+        if resp.status_code in (401, 403):
+            raise ErroProvedor("O Groq recusou essa chave. Confira se copiou inteira, ou gere outra.")
+        if resp.status_code >= 400:
+            raise ErroProvedor(f"O Groq respondeu com erro {resp.status_code}. Tente de novo em instantes.")
+
     def responder(self, system: str, mensagens: list[dict], ferramentas: list[dict]) -> Resposta:
         corpo = {
             "model": self.modelo,

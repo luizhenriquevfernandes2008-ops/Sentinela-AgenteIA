@@ -62,8 +62,12 @@ def test_saude_publica_sem_dados(visitante):
 
 def test_sem_login_nada_de_dados(visitante):
     assert visitante.get("/api/sessao").json() == {"login_necessario": True, "autenticado": False}
-    for rota in ["/api/loja", "/api/status", "/api/execucoes", "/api/aprovacoes", "/api/controles", "/api/metricas"]:
+    for rota in ["/api/loja", "/api/execucoes", "/api/aprovacoes", "/api/controles", "/api/metricas", "/api/ia"]:
         assert visitante.get(rota).status_code == 401, rota
+    # /api/status responde sem login (o Render usa para checar o deploy), mas sem nenhum dado.
+    assert visitante.get("/api/status").json() == {"ok": True}
+    assert visitante.put("/api/ia", json={"modo": "groq", "chave": "gsk_" + "a" * 40}).status_code == 401
+    assert visitante.delete("/api/ia/chave", headers={"content-type": "application/json"}).status_code == 401
     assert visitante.post("/api/tarefas", json={"tarefa": "Como está o estoque?"}).status_code == 401
     assert visitante.put("/api/controles", json={"max_passos": 3}).status_code == 401
     assert visitante.post("/api/demo/resetar", json={}).status_code == 401

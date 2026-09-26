@@ -411,3 +411,17 @@ textarea { resize: vertical; min-height: 120px; font-size: 1.02rem; margin-botto
 .sair { align-self: center; }
 
 .lateral-rodape .chip { white-space: normal; line-height: 1.35; border-radius: 10px; }
+
+/* ============================================================ IA (Controles) */
+.cartao-ia { margin-bottom: 24px; }
+.cartao-ia .linha-titulo h2 { margin-bottom: 4px; }
+.cartao-ia .linha-titulo .dica { margin: 0; }
+.linha-ia { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.linha-ia input[type="password"] {
+  flex: 1 1 320px; font: inherit; color: var(--texto); background: var(--superficie);
+  border: 1px solid var(--borda); border-radius: 12px; padding: 12px 14px; font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.linha-ia input[type="password"]:focus { outline: none; border-color: var(--destaque); box-shadow: 0 0 0 3px var(--destaque-suave); }
+#ia-mensagem:empty { display: none; }
+#ia-mensagem.erro { color: var(--perigo); }
+#ia-mensagem.ok { color: var(--ok); }

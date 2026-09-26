@@ -486,7 +486,67 @@ $("#btn-resetar").addEventListener("click", async () => {
 });
 
 // ================================================================ Controles
+// ------------------------------------------------------- IA pela aba Controles
+function mostrarIA(d) {
+  const ligada = d.modo === "groq";
+  const chipIA = $("#ia-estado");
+  chipIA.className = "chip " + (ligada ? "ok" : "");
+  chipIA.textContent = ligada ? `Ligada · ${d.provedor} · ${d.modelo}` : "Desligada · modo simulado";
+  $("#btn-ligar-ia").textContent = ligada ? "Trocar chave" : d.chave_configurada ? "Ligar IA" : "Ligar IA";
+  $("#chave-groq").placeholder = d.chave_configurada
+    ? `Chave salva terminando em …${d.chave_final}. Cole outra para trocar.`
+    : "Cole aqui a chave do Groq (começa com gsk_)";
+  $("#btn-desligar-ia").hidden = !ligada;
+  $("#btn-remover-chave").hidden = !d.chave_pelo_painel;
+}
+
+function mensagemIA(texto, tipo = "") {
+  const m = $("#ia-mensagem");
+  m.textContent = texto;
+  m.className = "dica " + tipo;
+}
+
+async function carregarIA() {
+  try { mostrarIA(await api("/api/ia")); } catch (e) { console.error(e); }
+}
+
+async function mudarIA(corpo, botao, textoEspera) {
+  const botoes = $$("#form-ia button");
+  botoes.forEach((b) => (b.disabled = true));
+  mensagemIA(textoEspera);
+  try {
+    const d = corpo === null
+      ? await api("/api/ia/chave", { method: "DELETE" })
+      : await api("/api/ia", { method: "PUT", body: corpo });
+    $("#chave-groq").value = "";
+    mostrarIA(d);
+    const aviso = d.guardada_temporariamente
+      ? " Na hospedagem grátis a chave some quando o site hiberna ou é atualizado; se a IA desligar sozinha, é só colar de novo."
+      : "";
+    mensagemIA(
+      d.modo === "groq" ? "Pronto! A IA está ligada. Teste na aba Agente." + aviso : "IA desligada: o agente voltou ao modo simulado.",
+      "ok",
+    );
+    await atualizarStatus();
+  } catch (e) {
+    mensagemIA(e.message, "erro");
+  } finally {
+    botoes.forEach((b) => (b.disabled = false));
+  }
+}
+
+$("#form-ia").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const chave = $("#chave-groq").value.trim();
+  mudarIA(chave ? { modo: "groq", chave } : { modo: "groq" }, ev.submitter, "Conferindo a chave com o Groq…");
+});
+$("#btn-desligar-ia").addEventListener("click", () => mudarIA({ modo: "simulado" }, null, "Desligando…"));
+$("#btn-remover-chave").addEventListener("click", () => {
+  if (confirm("Remover a chave salva? A IA volta para o modo simulado.")) mudarIA(null, null, "Removendo…");
+});
+
 async function carregarControles() {
+  carregarIA();
   const c = await api("/api/controles");
   const riscos = estado.status?.ferramentas || (await api("/api/status")).ferramentas;
   $("#tabela-ferramentas tbody").innerHTML = Object.entries(c.ferramentas)

@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS controles (
     chave TEXT PRIMARY KEY,
     valor_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ajustes (
+    chave TEXT PRIMARY KEY,
+    valor_json TEXT NOT NULL
+);
 """
 
 
@@ -130,6 +134,24 @@ class Controle:
         with self._trava:
             for tabela in ("eventos", "aprovacoes", "execucoes", "controles"):
                 self._conn.execute(f"DELETE FROM {tabela}")
+            self._conn.commit()
+
+    # ------------------------------------------------ ajustes do servidor
+    # Configurações que o operador faz pelo painel (ex.: chave da IA). Ficam
+    # fora de "controles" e não são apagadas por "Restaurar demonstração".
+    def ler_ajuste(self, chave: str) -> Any:
+        with self._trava:
+            linha = self._conn.execute("SELECT valor_json FROM ajustes WHERE chave = ?", (chave,)).fetchone()
+        return json.loads(linha[0]) if linha else None
+
+    def gravar_ajuste(self, chave: str, valor: Any) -> None:
+        with self._trava:
+            self._conn.execute("INSERT OR REPLACE INTO ajustes VALUES (?, ?)", (chave, json.dumps(valor)))
+            self._conn.commit()
+
+    def apagar_ajuste(self, chave: str) -> None:
+        with self._trava:
+            self._conn.execute("DELETE FROM ajustes WHERE chave = ?", (chave,))
             self._conn.commit()
 
     # ------------------------------------------------------------- controles

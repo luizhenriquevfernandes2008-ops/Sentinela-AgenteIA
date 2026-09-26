@@ -85,6 +85,7 @@ class Config:
         cfg.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         cfg.groq_api_key = os.environ.get("GROQ_API_KEY", "")
         cfg.groq_modelo = os.environ.get("GROQ_MODELO", cfg.groq_modelo)
+        cfg.groq_url = os.environ.get("GROQ_URL", cfg.groq_url)
         modo = os.environ.get("MODO_AGENTE", "").strip().lower()
         if modo == "real":  # nome antigo do modo Claude
             modo = "claude"

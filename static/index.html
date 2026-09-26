@@ -183,6 +183,29 @@
           <h1>Controles</h1>
           <p>Regras que valem sempre, mesmo se o modelo for enganado. Mudanças valem na hora.</p>
         </header>
+
+        <div class="cartao cartao-ia">
+          <div class="linha-titulo">
+            <div>
+              <h2>Inteligência artificial</h2>
+              <p class="dica">Quem decide os passos do agente. Com a chave grátis do Groq, é uma IA de verdade.</p>
+            </div>
+            <span id="ia-estado" class="chip">…</span>
+          </div>
+          <form id="form-ia" class="linha-ia" autocomplete="off">
+            <input type="password" id="chave-groq" placeholder="Cole aqui a chave do Groq (começa com gsk_)"
+                   autocomplete="off" spellcheck="false" maxlength="300" aria-label="Chave do Groq">
+            <button class="botao primario" type="submit" id="btn-ligar-ia">Ligar IA</button>
+            <button class="botao" type="button" id="btn-desligar-ia" hidden>Desligar IA</button>
+            <button class="botao perigo" type="button" id="btn-remover-chave" hidden>Remover chave</button>
+          </form>
+          <p id="ia-mensagem" class="dica" role="status"></p>
+          <p class="dica">
+            Não tem chave? Crie grátis em <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">console.groq.com/keys</a>.
+            A chave fica só no servidor: aqui aparecem apenas os 4 últimos caracteres.
+          </p>
+        </div>
+
         <div class="duas-colunas controles">
           <div class="cartao">
             <h2>Ferramentas do agente</h2>
