@@ -19,7 +19,7 @@ const EVENTOS = {
   ferramenta_executada: { rotulo: "Executada", cor: "var(--ok)" },
   erro_ferramenta: { rotulo: "A ferramenta falhou", cor: "var(--perigo)" },
   bloqueio: { rotulo: "Bloqueada pelas regras", cor: "var(--perigo)" },
-  aguardando_aprovacao: { rotulo: "Aguardando sua aprovação", cor: "var(--alerta)" },
+  aguardando_aprovacao: { rotulo: "Precisa da sua aprovação", cor: "var(--alerta)" },
   aprovada: { rotulo: "Aprovada", cor: "var(--ok)" },
   rejeitada: { rotulo: "Rejeitada", cor: "var(--perigo)" },
   fallback: { rotulo: "Troca de modelo", cor: "var(--alerta)" },
@@ -40,13 +40,33 @@ const STATUS = {
   erro: ["Erro", "perigo"],
 };
 
+const STATUS_PEDIDO = {
+  pendente: "", pago: "destaque", enviado: "destaque", entregue: "ok", cancelado: "perigo", reembolsado: "alerta",
+};
+
 const RISCO = { leitura: ["leitura", "ok"], escrita: ["escrita", "destaque"], sensivel: ["sensível", "alerta"] };
-const CHAVE_INTRO = "sentinela.intro.fechada";
+const PAGINAS = ["inicio", "agente", "aprovacoes", "historico", "loja", "controles"];
+const CHAVE_VISITOU = "sentinela.visitou";
+const CHAVE_TECNICO = "sentinela.detalhes_tecnicos";
 
-const estado = { selecionada: null, aba: "controles", status: null };
+const NOMES_CAMPOS = {
+  pedido_id: "Pedido", cliente_id: "Cliente", valor: "Valor", motivo: "Motivo",
+  para: "Para", assunto: "Assunto", corpo: "Mensagem", itens: "Itens", busca: "Busca",
+};
 
-// ------------------------------------------------------------------ utilidades
+const estado = {
+  pagina: null,
+  status: null,
+  selecionada: null,
+  subLoja: "pedidos",
+  assinaturas: {},          // evita redesenhar o que não mudou
+  pendentesVistas: null,    // ids de aprovações já conhecidas (para o aviso)
+  verTecnico: false,
+};
+
+// ================================================================ utilidades
 const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => [...document.querySelectorAll(sel)];
 
 function esc(valor) {
   return String(valor ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -76,27 +96,67 @@ function json(valor) {
   return esc(JSON.stringify(valor, null, 2));
 }
 
+/** Mostra a entrada de uma ferramenta como uma lista legível, e não como JSON. */
+function campos(entrada) {
+  const valor = (chave, v) => {
+    if (chave === "valor" && typeof v === "number") return reais(v);
+    if (chave === "itens" && Array.isArray(v)) return v.map((i) => `${i.quantidade}× produto ${i.produto_id}`).join(", ");
+    if (typeof v === "object" && v !== null) return JSON.stringify(v);
+    return String(v);
+  };
+  return `<dl class="campos">${Object.entries(entrada || {})
+    .map(([k, v]) => `<dt>${esc(NOMES_CAMPOS[k] || k)}</dt><dd>${esc(valor(k, v))}</dd>`)
+    .join("")}</dl>`;
+}
+
 function lerPreferencia(chave) {
   try { return localStorage.getItem(chave); } catch { return null; }
 }
 function gravarPreferencia(chave, valor) {
-  try { localStorage.setItem(chave, valor); } catch { /* navegador sem armazenamento: tudo bem */ }
+  try { localStorage.setItem(chave, valor); } catch { /* sem armazenamento: tudo bem */ }
 }
 
-// ------------------------------------------------------------ apresentação
-function mostrarIntro(mostrar) {
-  $("#intro").hidden = !mostrar;
-  gravarPreferencia(CHAVE_INTRO, mostrar ? "0" : "1");
+/** Redesenha um elemento só quando o conteúdo muda e ninguém está digitando nele. */
+function desenhar(alvo, chave, assinatura, html) {
+  const ativo = document.activeElement;
+  if (ativo && alvo.contains(ativo) && ativo.tagName === "INPUT") return false;
+  if (estado.assinaturas[chave] === assinatura) return false;
+  estado.assinaturas[chave] = assinatura;
+  alvo.innerHTML = html;
+  return true;
 }
-$("#intro").hidden = lerPreferencia(CHAVE_INTRO) === "1";
-$("#btn-fechar-intro").addEventListener("click", () => mostrarIntro(false));
-$("#btn-como-funciona").addEventListener("click", () => {
-  mostrarIntro(true);
-  window.scrollTo({ top: 0, behavior: "smooth" });
-});
 
-// --------------------------------------------------------------------- topo
-async function atualizarTopo() {
+// ================================================================ navegação
+function paginaDoEndereco() {
+  const nome = location.hash.slice(1);
+  if (PAGINAS.includes(nome)) return nome;
+  return lerPreferencia(CHAVE_VISITOU) ? "agente" : "inicio";
+}
+
+function mostrarPagina(nome) {
+  estado.pagina = nome;
+  gravarPreferencia(CHAVE_VISITOU, "1");
+  $$(".pagina").forEach((p) => (p.hidden = p.dataset.pagina !== nome));
+  $$(".menu a").forEach((a) => {
+    const ativo = a.dataset.pagina === nome;
+    a.classList.toggle("ativo", ativo);
+    if (ativo) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+  window.scrollTo(0, 0);
+  if (nome === "controles") carregarControles();
+  atualizarPagina();
+}
+
+window.addEventListener("hashchange", () => mostrarPagina(paginaDoEndereco()));
+
+function irPara(nome) {
+  if (location.hash === "#" + nome) mostrarPagina(nome);
+  else location.hash = nome;
+}
+
+// ===================================================================== topo
+async function atualizarStatus() {
   const s = await api("/api/status");
   estado.status = s;
   $("#modo").className = "chip " + (s.modo === "real" ? "destaque" : "");
@@ -109,16 +169,80 @@ async function atualizarTopo() {
   indicador.querySelector("span").textContent = s.agente_ativo ? "Agente ativo" : "Agente pausado";
   const btn = $("#btn-pausa");
   btn.textContent = s.agente_ativo ? "Pausar agente" : "Reativar agente";
-  btn.className = "botao " + (s.agente_ativo ? "perigo" : "sucesso");
+  btn.classList.toggle("perigo", s.agente_ativo);
+  btn.classList.toggle("sucesso", !s.agente_ativo);
 }
 
 $("#btn-pausa").addEventListener("click", async () => {
   await api("/api/controles", { method: "PUT", body: { agente_ativo: !estado.status.agente_ativo } });
-  await atualizarTudo();
+  await ciclo();
 });
 
-// ----------------------------------------------------------------- métricas
-async function atualizarMetricas() {
+// ============================================== aprovações: selo e aviso
+async function atualizarPendentes() {
+  const lista = await api("/api/aprovacoes");
+  const selo = $("#selo-aprovacoes");
+  selo.textContent = lista.length;
+  selo.hidden = lista.length === 0;
+
+  const ids = new Set(lista.map((a) => a.id));
+  if (estado.pendentesVistas) {
+    const novas = lista.filter((a) => !estado.pendentesVistas.has(a.id));
+    const jaVendo = (a) => estado.pagina === "aprovacoes" || (estado.pagina === "agente" && a.execucao_id === estado.selecionada);
+    const avisar = novas.filter((a) => !jaVendo(a));
+    if (avisar.length) mostrarAviso(`Ação aguardando sua aprovação: ${avisar[0].ferramenta}`, () => irPara("aprovacoes"));
+  }
+  estado.pendentesVistas = ids;
+  return lista;
+}
+
+let temporizadorAviso = null;
+function mostrarAviso(texto, aoClicar) {
+  const aviso = $("#aviso");
+  aviso.textContent = texto;
+  aviso.hidden = false;
+  aviso.onclick = () => { aviso.hidden = true; aoClicar(); };
+  clearTimeout(temporizadorAviso);
+  temporizadorAviso = setTimeout(() => (aviso.hidden = true), 7000);
+}
+
+async function decidir(aprovacaoId, aprovar, comentario, botoes) {
+  botoes.forEach((b) => (b.disabled = true));
+  try {
+    const r = await api(`/api/aprovacoes/${aprovacaoId}/decisao`, { method: "POST", body: { aprovar, comentario } });
+    estado.selecionada = r.execucao_id;
+  } catch (e) {
+    alert(e.message);
+  }
+  if (document.activeElement) document.activeElement.blur();
+  estado.assinaturas = {};
+  await ciclo();
+}
+
+// Um único tratador para os botões Aprovar/Rejeitar, na aba Aprovações e na linha do tempo.
+document.addEventListener("click", (ev) => {
+  const botao = ev.target.closest("[data-decisao]");
+  if (!botao) return;
+  const caixa = botao.closest("[data-aprovacao]");
+  decidir(
+    Number(caixa.dataset.aprovacao),
+    botao.dataset.decisao === "1",
+    caixa.querySelector("input")?.value || "",
+    [...caixa.querySelectorAll("button")],
+  );
+});
+
+function caixaDecisao() {
+  return `
+    <div class="acoes-decisao">
+      <input type="text" placeholder="Comentário para o agente (opcional)" maxlength="500" aria-label="Comentário">
+      <button class="botao sucesso" data-decisao="1" type="button">Aprovar</button>
+      <button class="botao perigo" data-decisao="0" type="button">Rejeitar</button>
+    </div>`;
+}
+
+// =================================================================== Início
+async function renderInicio() {
   const [m, c] = await Promise.all([api("/api/metricas"), api("/api/controles")]);
   const uso = c.orcamento_tokens_dia ? Math.min(100, (100 * m.tokens_hoje) / c.orcamento_tokens_dia) : 100;
   const cartoes = [
@@ -128,23 +252,22 @@ async function atualizarMetricas() {
     { rotulo: "Aguardando você", valor: numero(m.aprovacoes_pendentes), chamativa: m.aprovacoes_pendentes > 0 },
     { rotulo: "Tokens hoje", valor: numero(m.tokens_hoje), barra: uso, extra: `${uso.toFixed(0)}% do orçamento diário` },
     {
-      rotulo: m.modo === "real" ? "Custo total" : "Custo",
+      rotulo: "Custo",
       valor: m.modo === "real" ? `US$ ${m.custo_usd.toFixed(3)}` : "US$ 0",
-      extra: m.modo === "real" ? "" : "modo simulado",
+      extra: m.modo === "real" ? "total gasto" : "modo simulado",
     },
   ];
-  $("#metricas").innerHTML = cartoes
-    .map((c) => `
-      <div class="metrica ${c.chamativa ? "chamativa" : ""}">
-        <div class="rotulo">${esc(c.rotulo)}</div>
-        <div class="valor">${esc(c.valor)}</div>
-        ${c.barra !== undefined ? `<div class="barra-uso"><span style="width:${c.barra}%"></span></div>` : ""}
-        ${c.extra ? `<div class="extra">${esc(c.extra)}</div>` : ""}
-      </div>`)
-    .join("");
+  const html = cartoes.map((k) => `
+    <div class="metrica ${k.chamativa ? "chamativa" : ""}">
+      <div class="rotulo">${esc(k.rotulo)}</div>
+      <div class="valor">${esc(k.valor)}</div>
+      ${k.barra !== undefined ? `<div class="barra-uso"><span style="width:${k.barra}%"></span></div>` : ""}
+      ${k.extra ? `<div class="extra">${esc(k.extra)}</div>` : ""}
+    </div>`).join("");
+  desenhar($("#metricas"), "metricas", html, html);
 }
 
-// -------------------------------------------------------------- nova tarefa
+// =================================================================== Agente
 $("#exemplos").innerHTML = EXEMPLOS.map((e) => `<button type="button" class="exemplo">${esc(e)}</button>`).join("");
 $("#exemplos").addEventListener("click", (ev) => {
   if (!ev.target.classList.contains("exemplo")) return;
@@ -154,7 +277,7 @@ $("#exemplos").addEventListener("click", (ev) => {
 
 $("#form-tarefa").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const botao = ev.submitter || $("#form-tarefa button[type=submit]");
+  const botao = $("#form-tarefa button[type=submit]");
   const erro = $("#erro-tarefa");
   erro.hidden = true;
   botao.disabled = true;
@@ -162,7 +285,7 @@ $("#form-tarefa").addEventListener("submit", async (ev) => {
     const { execucao_id } = await api("/api/tarefas", { method: "POST", body: { tarefa: $("#tarefa").value } });
     $("#tarefa").value = "";
     estado.selecionada = execucao_id;
-    await atualizarTudo();
+    await ciclo();
   } catch (e) {
     erro.textContent = e.message;
     erro.hidden = false;
@@ -171,73 +294,9 @@ $("#form-tarefa").addEventListener("submit", async (ev) => {
   }
 });
 
-// ---------------------------------------------------------------- aprovações
-async function atualizarAprovacoes() {
-  const lista = await api("/api/aprovacoes");
-  $("#qtd-aprovacoes").textContent = lista.length;
-  $("#cartao-aprovacoes").classList.toggle("tem", lista.length > 0);
-  const alvo = $("#aprovacoes");
-  // Não redesenhar enquanto a pessoa digita um comentário.
-  if (alvo.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;
-  // Só redesenha quando a lista muda (a lista vazia também é uma assinatura válida).
-  const assinatura = "ids:" + lista.map((a) => a.id).join(",");
-  if (alvo.dataset.assinatura === assinatura) return;
-  alvo.dataset.assinatura = assinatura;
-  alvo.innerHTML = lista.length
-    ? lista.map((a) => `
-      <div class="aprovacao" data-id="${a.id}">
-        <div class="cab"><strong>${esc(a.ferramenta)}</strong>${chip(`tarefa #${a.execucao_id}`)}</div>
-        <div class="tarefa">“${esc(a.tarefa)}”</div>
-        <pre>${json(a.entrada)}</pre>
-        <p class="motivo">${esc(a.motivo)}</p>
-        <div class="acoes">
-          <input type="text" placeholder="Comentário para o agente (opcional)" maxlength="500">
-          <button class="botao sucesso" data-decisao="1" type="button">Aprovar</button>
-          <button class="botao perigo" data-decisao="0" type="button">Rejeitar</button>
-        </div>
-      </div>`).join("")
-    : '<p class="vazio">Nada pendente. Ações sensíveis aparecem aqui antes de acontecer.</p>';
-}
-
-$("#aprovacoes").addEventListener("click", async (ev) => {
-  const botao = ev.target.closest("[data-decisao]");
-  if (!botao) return;
-  const cartao = botao.closest(".aprovacao");
-  cartao.querySelectorAll("button").forEach((b) => (b.disabled = true));
-  try {
-    const r = await api(`/api/aprovacoes/${cartao.dataset.id}/decisao`, {
-      method: "POST",
-      body: { aprovar: botao.dataset.decisao === "1", comentario: cartao.querySelector("input").value },
-    });
-    estado.selecionada = r.execucao_id;
-  } catch (e) {
-    alert(e.message);
-  }
-  delete $("#aprovacoes").dataset.assinatura;
-  await atualizarTudo();
-});
-
-// ----------------------------------------------------------------- histórico
-async function atualizarExecucoes() {
-  const lista = await api("/api/execucoes");
-  $("#execucoes").innerHTML = lista.length
-    ? lista.map((e) => `
-      <button class="item-exec ${e.id === estado.selecionada ? "selecionado" : ""}" data-id="${e.id}" type="button">
-        <span class="t">${esc(e.tarefa)}</span>${chipStatus(e.status)}
-        <span class="m">#${e.id} · ${hora(e.criado_em)} · ${e.passos} passo(s) · ${numero(e.tokens_entrada + e.tokens_saida)} tokens${e.modo === "real" ? ` · US$ ${e.custo_usd.toFixed(4)}` : ""}</span>
-      </button>`).join("")
-    : '<p class="vazio">Nenhuma tarefa ainda. Experimente um dos exemplos acima.</p>';
-}
-
-$("#execucoes").addEventListener("click", (ev) => {
-  const item = ev.target.closest(".item-exec");
-  if (!item) return;
-  estado.selecionada = Number(item.dataset.id);
-  atualizarTudo();
-});
-
-function corpoEvento(e) {
+function corpoEvento(e, aprovacoes) {
   const d = e.dados || {};
+  const detalhes = (rotulo, valor) => `<details data-id="${e.id}"><summary>${rotulo}</summary><pre>${json(valor)}</pre></details>`;
   switch (e.tipo) {
     case "inicio": return `<div class="corpo">${esc(d.tarefa)}</div>`;
     case "texto": return `<div class="corpo">${esc(d.texto)}</div>`;
@@ -245,11 +304,15 @@ function corpoEvento(e) {
     case "modelo":
       return `<div class="corpo suave">${esc(d.modelo)} · ${numero(d.tokens_entrada)} tokens de entrada, ${numero(d.tokens_saida)} de saída${d.custo_usd ? ` · US$ ${d.custo_usd.toFixed(5)}` : ""}</div>`;
     case "chamada":
-      return `<div class="corpo"><code>${esc(d.ferramenta)}</code></div><details><summary>ver parâmetros</summary><pre>${json(d.entrada)}</pre></details>`;
+      return `<div class="corpo"><code>${esc(d.ferramenta)}</code></div>${detalhes("ver parâmetros", d.entrada)}`;
     case "ferramenta_executada":
-      return `<div class="corpo"><code>${esc(d.ferramenta)}</code></div><details><summary>ver resultado</summary><pre>${json(d.resultado)}</pre></details>`;
+      return `<div class="corpo"><code>${esc(d.ferramenta)}</code></div>${detalhes("ver resultado", d.resultado)}`;
+    case "aguardando_aprovacao": {
+      const ap = aprovacoes.find((a) => a.id === d.aprovacao_id);
+      const pendente = ap && ap.status === "pendente";
+      return `<div class="corpo"><code>${esc(d.ferramenta)}</code>${pendente ? " · decida no topo da tarefa ↑" : ""}</div>`;
+    }
     case "bloqueio":
-    case "aguardando_aprovacao":
       return `<div class="corpo"><code>${esc(d.ferramenta)}</code> ${esc(d.motivo)}</div>`;
     case "aprovada":
     case "rejeitada":
@@ -263,17 +326,30 @@ function corpoEvento(e) {
   }
 }
 
-async function atualizarDetalhe() {
-  if (!estado.selecionada) return;
+async function renderAgente() {
+  if (!estado.selecionada) {
+    const lista = await api("/api/execucoes");
+    if (!lista.length) return;
+    estado.selecionada = lista[0].id;
+  }
   const ex = await api(`/api/execucoes/${estado.selecionada}`);
-  // Guarda quais "ver resultado" estavam abertos para não fechá-los a cada atualização.
-  const abertos = new Set([...document.querySelectorAll("#detalhe details[open]")].map((d) => d.dataset.id));
-  $("#titulo-detalhe").textContent = `Tarefa #${ex.id}`;
-  $("#btn-cancelar-exec").hidden = !["executando", "aguardando_aprovacao"].includes(ex.status);
+  const assinatura = JSON.stringify([ex.id, ex.status, ex.eventos.length, ex.aprovacoes.map((a) => a.status), estado.verTecnico]);
+  const eventos = ex.eventos.filter((e) => estado.verTecnico || e.tipo !== "modelo");
+  const decisoes = ex.aprovacoes
+    .filter((a) => a.status === "pendente")
+    .map((a) => `
+      <div class="decidir" data-aprovacao="${a.id}">
+        <p class="titulo-decisao"><strong>Precisa da sua decisão:</strong> <code>${esc(a.ferramenta)}</code></p>
+        ${campos(a.entrada)}
+        <p class="motivo">${esc(a.motivo)}</p>
+        ${caixaDecisao()}
+      </div>`)
+    .join("");
+  const abertos = new Set($$("#detalhe details[open]").map((d) => d.dataset.id));
   const final = ex.status === "concluida" && ex.resposta_final
     ? `<div class="resposta-final"><span class="rotulo">Resposta do agente</span>${esc(ex.resposta_final)}</div>`
     : "";
-  $("#detalhe").innerHTML = `
+  const html = `
     <div class="resumo-exec">
       ${chipStatus(ex.status)}
       ${chip(`${ex.passos} passo(s)`)}
@@ -281,21 +357,34 @@ async function atualizarDetalhe() {
       ${ex.modo === "real" ? chip(`US$ ${ex.custo_usd.toFixed(4)}`) : ""}
     </div>
     <p class="tarefa-citada">“${esc(ex.tarefa)}”</p>
+    ${decisoes}
     ${final}
     <ol class="linha-tempo">
-      ${ex.eventos.map((e) => {
+      ${eventos.map((e) => {
         const info = EVENTOS[e.tipo] || { rotulo: e.tipo, cor: "var(--suave)" };
         return `<li class="evento" style="--cor:${info.cor}">
           <div class="cab"><strong>${esc(info.rotulo)}</strong><span class="hora">${hora(e.criado_em)}</span></div>
-          ${corpoEvento(e).replace("<details>", `<details data-id="${e.id}">`)}
+          ${corpoEvento(e, ex.aprovacoes)}
         </li>`;
       }).join("")}
     </ol>`;
-  abertos.forEach((id) => {
-    const d = document.querySelector(`#detalhe details[data-id="${id}"]`);
-    if (d) d.open = true;
-  });
+  $("#titulo-detalhe").textContent = `Tarefa #${ex.id}`;
+  $("#btn-cancelar-exec").hidden = !["executando", "aguardando_aprovacao"].includes(ex.status);
+  if (desenhar($("#detalhe"), "agente", assinatura, html)) {
+    abertos.forEach((id) => {
+      const d = $(`#detalhe details[data-id="${id}"]`);
+      if (d) d.open = true;
+    });
+  }
 }
+
+estado.verTecnico = lerPreferencia(CHAVE_TECNICO) === "1";
+$("#ver-tecnico").checked = estado.verTecnico;
+$("#ver-tecnico").addEventListener("change", (ev) => {
+  estado.verTecnico = ev.target.checked;
+  gravarPreferencia(CHAVE_TECNICO, estado.verTecnico ? "1" : "0");
+  renderAgente();
+});
 
 $("#btn-cancelar-exec").addEventListener("click", async () => {
   if (!confirm("Cancelar esta tarefa? Ações pendentes serão rejeitadas.")) return;
@@ -304,13 +393,99 @@ $("#btn-cancelar-exec").addEventListener("click", async () => {
   } catch (e) {
     alert(e.message);
   }
-  await atualizarTudo();
+  await ciclo();
 });
 
-// ----------------------------------------------------------------- controles
+// =============================================================== Aprovações
+function renderAprovacoes(lista) {
+  const assinatura = lista.map((a) => a.id).join(",");
+  const html = lista.length
+    ? lista.map((a) => `
+      <div class="cartao aprovacao" data-aprovacao="${a.id}">
+        <div class="cab"><strong>${esc(a.ferramenta)}</strong>${chip(`tarefa #${a.execucao_id}`)}</div>
+        <p class="tarefa">“${esc(a.tarefa)}”</p>
+        ${campos(a.entrada)}
+        <p class="motivo">${esc(a.motivo)}</p>
+        ${caixaDecisao()}
+      </div>`).join("")
+    : `<div class="vazio-grande">
+        <strong>Nada esperando por você</strong>
+        <span>Quando o agente quiser cancelar, reembolsar ou mandar e-mail, a ação aparece aqui antes de acontecer.</span>
+      </div>`;
+  desenhar($("#aprovacoes"), "aprovacoes", assinatura, html);
+}
+
+// ================================================================ Histórico
+async function renderHistorico() {
+  const lista = await api("/api/execucoes");
+  const assinatura = JSON.stringify(lista.map((e) => [e.id, e.status, e.passos]));
+  const html = lista.length
+    ? lista.map((e) => `
+      <button class="item-exec" data-id="${e.id}" type="button">
+        <span class="t">${esc(e.tarefa)}</span>
+        ${chipStatus(e.status)}
+        <span class="m">#${e.id} · ${hora(e.criado_em)} · ${e.passos} passo(s) · ${numero(e.tokens_entrada + e.tokens_saida)} tokens${e.modo === "real" ? ` · US$ ${e.custo_usd.toFixed(4)}` : ""}</span>
+      </button>`).join("")
+    : `<div class="vazio-grande"><strong>Nenhuma tarefa ainda</strong><span>As tarefas que você der ao agente aparecem aqui.</span></div>`;
+  desenhar($("#execucoes"), "historico", assinatura, html);
+}
+
+$("#execucoes").addEventListener("click", (ev) => {
+  const item = ev.target.closest(".item-exec");
+  if (!item) return;
+  estado.selecionada = Number(item.dataset.id);
+  irPara("agente");
+});
+
+// ===================================================================== Loja
+async function renderLoja() {
+  const l = await api("/api/loja");
+  $("#qtd-emails").textContent = l.emails.length || "";
+  $("#qtd-reembolsos").textContent = l.reembolsos.length || "";
+  $("#tabela-pedidos").innerHTML = `
+    <thead><tr><th>Pedido</th><th>Cliente</th><th>Status</th><th>Itens</th><th class="num">Total</th><th class="num">Reembolsado</th><th>Observação</th></tr></thead>
+    <tbody>${l.pedidos.map((p) => `<tr>
+      <td><strong>${p.id}</strong></td><td>${esc(p.cliente.nome)}</td><td>${chip(p.status, STATUS_PEDIDO[p.status] || "")}</td>
+      <td>${p.itens.map((i) => `${i.quantidade}× ${esc(i.nome)}`).join("<br>")}</td>
+      <td class="num">${reais(p.total)}</td><td class="num">${reais(p.total_reembolsado)}</td>
+      <td class="obs">${esc(p.observacao)}</td></tr>`).join("")}</tbody>`;
+  $("#tabela-produtos").innerHTML = `
+    <thead><tr><th>#</th><th>Produto</th><th>SKU</th><th class="num">Preço</th><th class="num">Estoque</th></tr></thead>
+    <tbody>${l.produtos.map((p) => `<tr><td>${p.id}</td><td>${esc(p.nome)}</td><td><code>${esc(p.sku)}</code></td>
+      <td class="num">${reais(p.preco)}</td>
+      <td class="num">${p.estoque === 0 ? chip("esgotado", "perigo") : p.estoque <= 5 ? chip(p.estoque, "alerta") : p.estoque}</td></tr>`).join("")}</tbody>`;
+  $("#lista-emails").innerHTML = l.emails.length
+    ? l.emails.map((e) => `<div class="email"><div class="de">Para ${esc(e.para)} · ${hora(e.enviado_em)}</div><strong>${esc(e.assunto)}</strong><pre>${esc(e.corpo)}</pre></div>`).join("")
+    : '<div class="vazio-grande"><strong>Nenhum e-mail enviado</strong><span>E-mails que o agente enviar aparecem aqui.</span></div>';
+  $("#tabela-reembolsos").innerHTML = l.reembolsos.length
+    ? `<thead><tr><th>Pedido</th><th class="num">Valor</th><th>Motivo</th><th>Quando</th></tr></thead>
+       <tbody>${l.reembolsos.map((r) => `<tr><td><strong>${r.pedido_id}</strong></td><td class="num">${reais(r.valor)}</td><td>${esc(r.motivo)}</td><td>${hora(r.criado_em)}</td></tr>`).join("")}</tbody>`
+    : '<tbody><tr><td><div class="vazio-grande"><strong>Nenhum reembolso</strong><span>Reembolsos aprovados aparecem aqui.</span></div></td></tr></tbody>';
+}
+
+$("#abas-loja").addEventListener("click", (ev) => {
+  const seg = ev.target.closest(".segmento");
+  if (!seg) return;
+  estado.subLoja = seg.dataset.sub;
+  $$("#abas-loja .segmento").forEach((s) => s.classList.toggle("ativo", s === seg));
+  $$('.pagina[data-pagina="loja"] .cartao > [data-sub]').forEach((p) => (p.hidden = p.dataset.sub !== estado.subLoja));
+});
+
+$("#btn-resetar").addEventListener("click", async () => {
+  if (!confirm("Restaurar a demonstração? Pedidos, estoque, histórico e controles voltam ao início.")) return;
+  await api("/api/demo/resetar", { method: "POST" });
+  estado.selecionada = null;
+  estado.assinaturas = {};
+  $("#titulo-detalhe").textContent = "Tarefa atual";
+  $("#btn-cancelar-exec").hidden = true;
+  $("#detalhe").innerHTML = '<div class="vazio-grande"><strong>Demonstração restaurada</strong><span>Tudo voltou ao estado inicial.</span></div>';
+  await ciclo();
+});
+
+// ================================================================ Controles
 async function carregarControles() {
   const c = await api("/api/controles");
-  const riscos = estado.status?.ferramentas || {};
+  const riscos = estado.status?.ferramentas || (await api("/api/status")).ferramentas;
   $("#tabela-ferramentas tbody").innerHTML = Object.entries(c.ferramentas)
     .map(([nome, conf]) => {
       const [rotulo, tipo] = RISCO[riscos[nome]?.risco] || ["?", ""];
@@ -353,64 +528,33 @@ $("#btn-salvar-limites").addEventListener("click", async () => {
   }
 });
 
-// ---------------------------------------------------------------------- loja
-async function atualizarLoja() {
-  const l = await api("/api/loja");
-  $("#tabela-pedidos").innerHTML = `
-    <thead><tr><th>Pedido</th><th>Cliente</th><th>Status</th><th>Itens</th><th class="num">Total</th><th class="num">Reembolsado</th><th>Observação</th></tr></thead>
-    <tbody>${l.pedidos.map((p) => `<tr>
-      <td>${p.id}</td><td>${esc(p.cliente.nome)}</td><td>${chip(p.status)}</td>
-      <td>${p.itens.map((i) => `${i.quantidade}× ${esc(i.nome)}`).join("<br>")}</td>
-      <td class="num">${reais(p.total)}</td><td class="num">${reais(p.total_reembolsado)}</td>
-      <td>${esc(p.observacao)}</td></tr>`).join("")}</tbody>`;
-  $("#tabela-produtos").innerHTML = `
-    <thead><tr><th>#</th><th>Produto</th><th class="num">Preço</th><th class="num">Estoque</th></tr></thead>
-    <tbody>${l.produtos.map((p) => `<tr><td>${p.id}</td><td>${esc(p.nome)}</td><td class="num">${reais(p.preco)}</td><td class="num">${p.estoque}</td></tr>`).join("")}</tbody>`;
-  $("#lista-emails").innerHTML = l.emails.length
-    ? l.emails.map((e) => `<div class="email"><div class="de">Para ${esc(e.para)} · ${hora(e.enviado_em)}</div><strong>${esc(e.assunto)}</strong><pre>${esc(e.corpo)}</pre></div>`).join("")
-    : '<p class="vazio">Nenhum e-mail enviado.</p>';
-  $("#tabela-reembolsos").innerHTML = l.reembolsos.length
-    ? `<thead><tr><th>Pedido</th><th class="num">Valor</th><th>Motivo</th></tr></thead>
-       <tbody>${l.reembolsos.map((r) => `<tr><td>${r.pedido_id}</td><td class="num">${reais(r.valor)}</td><td>${esc(r.motivo)}</td></tr>`).join("")}</tbody>`
-    : '<tbody><tr><td class="vazio">Nenhum reembolso.</td></tr></tbody>';
+// ==================================================================== ciclo
+let pendentesAtuais = [];
+
+async function atualizarPagina() {
+  switch (estado.pagina) {
+    case "inicio": return renderInicio();
+    case "agente": return renderAgente();
+    case "aprovacoes": return renderAprovacoes(pendentesAtuais);
+    case "historico": return renderHistorico();
+    case "loja": return renderLoja();
+    default: return undefined;
+  }
 }
 
-$("#btn-resetar").addEventListener("click", async () => {
-  if (!confirm("Restaurar a demonstração? Pedidos, estoque, histórico e controles voltam ao início.")) return;
-  await api("/api/demo/resetar", { method: "POST" });
-  estado.selecionada = null;
-  $("#titulo-detalhe").textContent = "Linha do tempo";
-  $("#btn-cancelar-exec").hidden = true;
-  $("#detalhe").innerHTML = '<div class="vazio-grande"><p><strong>Demonstração restaurada</strong></p><p>Tudo voltou ao estado inicial.</p></div>';
-  delete $("#aprovacoes").dataset.assinatura;
-  await Promise.all([atualizarTudo(), carregarControles()]);
-});
-
-// ---------------------------------------------------------------------- abas
-document.querySelectorAll(".aba").forEach((aba) =>
-  aba.addEventListener("click", () => {
-    estado.aba = aba.dataset.aba;
-    document.querySelectorAll(".aba").forEach((a) => a.classList.toggle("ativa", a === aba));
-    $("#aba-controles").hidden = estado.aba !== "controles";
-    $("#aba-loja").hidden = estado.aba !== "loja";
-    if (estado.aba === "controles") carregarControles();
-    else atualizarLoja();
-  })
-);
-
-// ------------------------------------------------------------------- ciclo
-async function atualizarTudo() {
+async function ciclo() {
   try {
-    await atualizarTopo();
-    await Promise.all([atualizarMetricas(), atualizarAprovacoes(), atualizarExecucoes(), atualizarDetalhe()]);
-    if (estado.aba === "loja") await atualizarLoja();
+    await atualizarStatus();
+    pendentesAtuais = await atualizarPendentes();
+    await atualizarPagina();
   } catch (e) {
     console.error(e);
   }
 }
 
 (async () => {
-  await atualizarTudo();
-  await carregarControles();
-  setInterval(atualizarTudo, 1500);
+  await atualizarStatus().catch(console.error);
+  mostrarPagina(paginaDoEndereco());
+  await ciclo();
+  setInterval(ciclo, 1500);
 })();

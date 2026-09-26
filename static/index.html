@@ -9,109 +9,183 @@
   <link rel="stylesheet" href="/static/painel.css">
 </head>
 <body>
-  <header class="barra">
-    <div class="container barra-conteudo">
-      <a class="marca" href="/" aria-label="Sentinela, início">
+  <div class="app">
+    <!-- ============================================================ menu -->
+    <aside class="lateral">
+      <a class="marca" href="#inicio" aria-label="Sentinela, início">
         <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
           <path d="M16 2 4 7v8c0 7.4 5.1 13.4 12 15 6.9-1.6 12-7.6 12-15V7L16 2z" fill="currentColor"/>
           <path d="m11 16 3.5 3.5L21.5 12" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span>
           <strong>Sentinela</strong>
-          <small>Agente de IA com controle humano</small>
+          <small>IA com controle humano</small>
         </span>
       </a>
-      <div class="barra-acoes">
-        <button id="btn-como-funciona" class="link" type="button">Como funciona</button>
+
+      <nav class="menu" aria-label="Seções">
+        <a href="#inicio" data-pagina="inicio">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+          <span>Início</span>
+        </a>
+        <a href="#agente" data-pagina="agente">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 14h.01M15 14h.01M2 13v3M22 13v3"/></svg>
+          <span>Agente</span>
+        </a>
+        <a href="#aprovacoes" data-pagina="aprovacoes">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 9.5 4-1.2 7-5 7-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span class="longo">Aprovações</span><span class="curto">Aprovar</span>
+          <b class="selo-menu" id="selo-aprovacoes" hidden>0</b>
+        </a>
+        <a href="#historico" data-pagina="historico">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span>Histórico</span>
+        </a>
+        <a href="#loja" data-pagina="loja">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+          <span>Loja</span>
+        </a>
+        <a href="#controles" data-pagina="controles">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2.5"/><circle cx="10" cy="12" r="2.5"/><circle cx="17.5" cy="18" r="2.5"/></svg>
+          <span>Controles</span>
+        </a>
+      </nav>
+
+      <div class="lateral-rodape">
         <span id="modo" class="chip">…</span>
         <span id="estado-agente" class="status"><i></i><span>…</span></span>
-        <button id="btn-pausa" class="botao" type="button">Pausar agente</button>
+        <button id="btn-pausa" class="botao bloco" type="button">Pausar agente</button>
       </div>
-    </div>
-  </header>
+    </aside>
 
-  <main class="container">
-    <section class="intro" id="intro" hidden>
-      <button class="fechar" id="btn-fechar-intro" type="button" aria-label="Fechar apresentação">×</button>
-      <div class="intro-texto">
-        <p class="kicker">Projeto de estudo · IA aplicada na prática</p>
-        <h1>Um agente de IA que opera sistemas de verdade, sob o seu controle.</h1>
-        <p>O Sentinela recebe tarefas em português, consulta e altera uma loja fictícia pela API dela e passa cada ação por regras de segurança. O que é sensível só acontece depois que você aprova.</p>
-      </div>
-      <ol class="passos">
-        <li>
-          <span class="passo-num">1</span>
-          <strong>Você pede</strong>
-          <span>Escreva uma tarefa ou clique em um exemplo, como “Cancele o pedido 1003”.</span>
-        </li>
-        <li>
-          <span class="passo-num">2</span>
-          <strong>O agente age</strong>
-          <span>Ele consulta e age na loja pela API, passo a passo, e tudo fica registrado.</span>
-        </li>
-        <li>
-          <span class="passo-num">3</span>
-          <strong>Você decide</strong>
-          <span>Cancelar, reembolsar e enviar e-mail esperam sua aprovação. Regras bloqueiam o que passa do limite.</span>
-        </li>
-      </ol>
-    </section>
+    <!-- ======================================================= conteúdo -->
+    <main class="conteudo">
 
-    <section class="metricas" id="metricas" aria-label="Resumo"></section>
+      <!-- ----------------------------------------------------- Início -->
+      <section class="pagina" data-pagina="inicio" hidden>
+        <div class="hero">
+          <p class="kicker">Projeto de estudo · IA aplicada na prática</p>
+          <h1>Um agente de IA que opera sistemas de verdade, sob o seu controle.</h1>
+          <p class="lead">O Sentinela recebe tarefas em português, consulta e altera uma loja fictícia pela API dela e passa cada ação por regras de segurança. O que é sensível só acontece depois que você aprova.</p>
+          <a class="botao primario grande" href="#agente">Experimentar agora →</a>
+        </div>
 
-    <div class="grade">
-      <div class="coluna">
-        <section class="cartao">
-          <h2>Nova tarefa</h2>
-          <form id="form-tarefa">
-            <textarea id="tarefa" rows="3" placeholder="Ex.: Cancele o pedido 1003 e avise o cliente" required></textarea>
-            <p class="dica">Exemplos para experimentar:</p>
-            <div class="exemplos" id="exemplos"></div>
-            <div class="form-rodape">
+        <ol class="passos">
+          <li>
+            <span class="passo-num">1</span>
+            <strong>Você pede</strong>
+            <span>Escreva uma tarefa ou clique em um exemplo, como “Cancele o pedido 1003”.</span>
+          </li>
+          <li>
+            <span class="passo-num">2</span>
+            <strong>O agente age</strong>
+            <span>Ele consulta e age na loja pela API, passo a passo, e tudo fica registrado.</span>
+          </li>
+          <li>
+            <span class="passo-num">3</span>
+            <strong>Você decide</strong>
+            <span>Cancelar, reembolsar e enviar e-mail esperam sua aprovação. Regras bloqueiam o que passa do limite.</span>
+          </li>
+        </ol>
+
+        <h2 class="titulo-secao">Em números</h2>
+        <div class="metricas" id="metricas"></div>
+
+        <footer class="rodape">
+          <p>Projeto de estudo feito com a ajuda de IA · Python, SQL (SQLite), FastAPI e Claude</p>
+          <p><a href="/docs">API do painel</a> · <a href="/loja/docs">API da loja</a> · <a href="https://github.com/luizhenriquevfernandes2008-ops/Sentinela-AgenteIA">Código no GitHub</a></p>
+        </footer>
+      </section>
+
+      <!-- ----------------------------------------------------- Agente -->
+      <section class="pagina" data-pagina="agente" hidden>
+        <header class="cab-pagina">
+          <h1>Agente</h1>
+          <p>Dê uma tarefa e acompanhe cada passo. Ações sensíveis param aqui para você decidir.</p>
+        </header>
+        <div class="duas-colunas">
+          <div class="cartao fixo">
+            <h2>Nova tarefa</h2>
+            <form id="form-tarefa">
+              <textarea id="tarefa" rows="4" placeholder="Ex.: Cancele o pedido 1003 e avise o cliente" required></textarea>
+              <button class="botao primario grande bloco" type="submit">Enviar ao agente</button>
               <p id="erro-tarefa" class="erro" hidden></p>
-              <button class="botao primario" type="submit">Enviar ao agente</button>
-            </div>
-          </form>
-        </section>
-
-        <section class="cartao" id="cartao-aprovacoes">
-          <h2>Aguardando sua aprovação <span id="qtd-aprovacoes" class="contador">0</span></h2>
-          <div id="aprovacoes"></div>
-        </section>
-
-        <section class="cartao">
-          <h2>Histórico</h2>
-          <div id="execucoes" class="lista"></div>
-        </section>
-      </div>
-
-      <div class="coluna">
-        <section class="cartao fixo" id="cartao-detalhe">
-          <div class="linha-titulo">
-            <h2 id="titulo-detalhe">Linha do tempo</h2>
-            <button id="btn-cancelar-exec" class="botao pequeno perigo" type="button" hidden>Cancelar execução</button>
+            </form>
+            <p class="dica">Ou experimente um exemplo:</p>
+            <div class="exemplos" id="exemplos"></div>
           </div>
-          <div id="detalhe">
-            <div class="vazio-grande">
-              <p><strong>Nada selecionado</strong></p>
-              <p>Envie uma tarefa ou escolha uma no histórico para ver cada passo do agente.</p>
+
+          <div class="cartao">
+            <div class="linha-titulo">
+              <h2 id="titulo-detalhe">Tarefa atual</h2>
+              <div class="acoes-titulo">
+                <label class="alternar"><input type="checkbox" class="switch" id="ver-tecnico"> Detalhes técnicos</label>
+                <button id="btn-cancelar-exec" class="botao pequeno perigo" type="button" hidden>Cancelar tarefa</button>
+              </div>
+            </div>
+            <div id="detalhe">
+              <div class="vazio-grande">
+                <strong>Nenhuma tarefa ainda</strong>
+                <span>Envie uma tarefa ao lado para ver o agente trabalhando.</span>
+              </div>
             </div>
           </div>
-        </section>
-      </div>
-    </div>
+        </div>
+      </section>
 
-    <section class="secao-abas">
-      <div class="abas" role="tablist">
-        <button class="aba ativa" data-aba="controles" role="tab" type="button">Controles</button>
-        <button class="aba" data-aba="loja" role="tab" type="button">Loja</button>
-      </div>
+      <!-- ------------------------------------------------- Aprovações -->
+      <section class="pagina" data-pagina="aprovacoes" hidden>
+        <header class="cab-pagina">
+          <h1>Aprovações</h1>
+          <p>Cancelar, reembolsar e enviar e-mail só acontecem depois da sua decisão.</p>
+        </header>
+        <div id="aprovacoes" class="grade-cartoes"></div>
+      </section>
 
-      <div class="cartao" id="aba-controles">
-        <div class="controles-grade">
+      <!-- -------------------------------------------------- Histórico -->
+      <section class="pagina" data-pagina="historico" hidden>
+        <header class="cab-pagina">
+          <h1>Histórico</h1>
+          <p>Todas as tarefas, com passos, tokens e resultado. Clique para ver os detalhes.</p>
+        </header>
+        <div class="cartao sem-padding">
+          <div id="execucoes" class="lista-exec"></div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------- Loja -->
+      <section class="pagina" data-pagina="loja" hidden>
+        <header class="cab-pagina com-acao">
           <div>
-            <h3>Ferramentas do agente</h3>
-            <p class="dica">Desligue uma ferramenta para bloqueá-la, ou exija aprovação antes de cada uso.</p>
+            <h1>Loja</h1>
+            <p>O sistema que o agente opera. O efeito real de cada ação aparece aqui.</p>
+          </div>
+          <button id="btn-resetar" class="botao" type="button">Restaurar demonstração</button>
+        </header>
+        <div class="segmentos" role="tablist" id="abas-loja">
+          <button class="segmento ativo" data-sub="pedidos" type="button">Pedidos</button>
+          <button class="segmento" data-sub="produtos" type="button">Produtos</button>
+          <button class="segmento" data-sub="emails" type="button">E-mails <b id="qtd-emails"></b></button>
+          <button class="segmento" data-sub="reembolsos" type="button">Reembolsos <b id="qtd-reembolsos"></b></button>
+        </div>
+        <div class="cartao sem-padding">
+          <div class="rolagem" data-sub="pedidos"><table class="tabela" id="tabela-pedidos"></table></div>
+          <div class="rolagem" data-sub="produtos" hidden><table class="tabela" id="tabela-produtos"></table></div>
+          <div data-sub="emails" hidden><div id="lista-emails" class="lista-emails"></div></div>
+          <div class="rolagem" data-sub="reembolsos" hidden><table class="tabela" id="tabela-reembolsos"></table></div>
+        </div>
+      </section>
+
+      <!-- -------------------------------------------------- Controles -->
+      <section class="pagina" data-pagina="controles" hidden>
+        <header class="cab-pagina">
+          <h1>Controles</h1>
+          <p>Regras que valem sempre, mesmo se o modelo for enganado. Mudanças valem na hora.</p>
+        </header>
+        <div class="duas-colunas controles">
+          <div class="cartao">
+            <h2>Ferramentas do agente</h2>
+            <p class="dica">Desligue para bloquear, ou exija aprovação antes de cada uso.</p>
             <div class="rolagem">
               <table class="tabela" id="tabela-ferramentas">
                 <thead><tr><th>Ferramenta</th><th>Risco</th><th>Ativa</th><th>Aprovação</th></tr></thead>
@@ -119,9 +193,9 @@
               </table>
             </div>
           </div>
-          <div>
-            <h3>Limites</h3>
-            <p class="dica">Valem sempre, mesmo se o modelo for enganado.</p>
+          <div class="cartao">
+            <h2>Limites</h2>
+            <p class="dica">Protegem contra erros, abusos e custos.</p>
             <label class="campo">Reembolso máximo do agente (R$)
               <input type="number" id="limite_reembolso" min="0" step="50">
             </label>
@@ -141,39 +215,11 @@
             </div>
           </div>
         </div>
-      </div>
+      </section>
+    </main>
+  </div>
 
-      <div class="cartao" id="aba-loja" hidden>
-        <div class="linha-titulo">
-          <div>
-            <h3>Pedidos</h3>
-            <p class="dica">O efeito real das ações do agente aparece aqui.</p>
-          </div>
-          <button id="btn-resetar" class="botao pequeno" type="button">Restaurar demonstração</button>
-        </div>
-        <div class="rolagem"><table class="tabela" id="tabela-pedidos"></table></div>
-        <div class="controles-grade">
-          <div>
-            <h3>Produtos</h3>
-            <div class="rolagem"><table class="tabela" id="tabela-produtos"></table></div>
-          </div>
-          <div>
-            <h3>E-mails enviados</h3>
-            <div id="lista-emails" class="lista"></div>
-            <h3>Reembolsos</h3>
-            <div class="rolagem"><table class="tabela" id="tabela-reembolsos"></table></div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="rodape">
-    <div class="container">
-      <p>Projeto de estudo feito com a ajuda de IA · Python, SQL (SQLite), FastAPI e Claude</p>
-      <p><a href="/docs">API do painel</a> · <a href="/loja/docs">API da loja</a> · <a href="https://github.com/luizhenriquevfernandes2008-ops/Sentinela-AgenteIA">Código no GitHub</a></p>
-    </div>
-  </footer>
+  <div id="aviso" class="aviso" role="status" hidden></div>
 
   <script src="/static/painel.js"></script>
 </body>
