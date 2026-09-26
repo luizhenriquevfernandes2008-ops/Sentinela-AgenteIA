@@ -37,22 +37,25 @@ def operador(app_publico):
 
 
 # ------------------------------------------------------------- publicação
-def test_nao_publica_com_senha_fraca(cfg):
+def test_senha_fraca_e_ignorada_mas_o_site_sobe(cfg):
+    """Configuração fraca não derruba o deploy: o servidor escolhe a opção segura."""
     cfg.publico = True
     cfg.loja_api_key = CHAVE_LOJA
     cfg.senha_operador = "curta"
-    with pytest.raises(RuntimeError, match="SENHA_OPERADOR"):
-        criar_app(cfg)
-    # Sem SENHA_OPERADOR pode: o administrador é criado no primeiro acesso.
-    cfg.senha_operador = ""
-    assert criar_app(cfg).state.contas.codigo_configuracao
+    app = criar_app(cfg)
+    c = TestClient(app)
+    assert c.get("/api/saude").status_code == 200
+    assert c.post("/api/login", json={"senha": "curta"}).status_code == 401  # não vale como senha
+    assert app.state.contas.codigo_configuracao  # ADM é criado pelo código do log
 
 
-def test_nao_publica_com_chave_da_loja_de_exemplo(cfg):
+def test_chave_da_loja_fraca_e_trocada_por_uma_aleatoria(cfg):
     cfg.publico = True
-    cfg.senha_operador = SENHA
-    with pytest.raises(RuntimeError, match="LOJA_API_KEY"):
-        criar_app(cfg)
+    app = criar_app(cfg)  # cfg.loja_api_key é a chave de exemplo
+    assert cfg.loja_api_key != "dev-loja-123" and len(cfg.loja_api_key) >= 32
+    c = TestClient(app)
+    assert c.get("/loja/clientes", headers={"X-API-Key": "dev-loja-123"}).status_code == 401
+    assert c.get("/api/saude").status_code == 200
 
 
 # ------------------------------------------------------------------- login

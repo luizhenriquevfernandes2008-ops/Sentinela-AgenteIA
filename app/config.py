@@ -120,18 +120,26 @@ class Config:
     def exige_login(self) -> bool:
         return self.publico or bool(self.senha_operador)
 
-    def problemas_de_publicacao(self) -> list[str]:
-        """O que impede este servidor de ficar aberto na internet com segurança."""
+    def ajustar_para_publicar(self) -> list[str]:
+        """Corrige sozinho o que ficaria inseguro na internet e devolve avisos para o log.
+
+        Nunca impede o servidor de subir (um deploy que não sobe deixa o site fora
+        do ar); em vez disso, escolhe sempre a opção segura.
+        """
         if not self.publico:
             return []
-        problemas = []
-        # Sem SENHA_OPERADOR tudo bem: o administrador é criado no primeiro acesso,
-        # com o código que aparece no log. Se ela existir, precisa ser forte.
+        avisos = []
         if self.senha_operador and len(self.senha_operador) < 12:
-            problemas.append("SENHA_OPERADOR precisa ter pelo menos 12 caracteres (ou apague a variável).")
+            self.senha_operador = ""
+            avisos.append(
+                "SENHA_OPERADOR tem menos de 12 caracteres e foi IGNORADA. "
+                "Crie a senha de administrador pelo site, com o código abaixo."
+            )
         if self.loja_api_key == "dev-loja-123" or len(self.loja_api_key) < 16:
-            problemas.append("LOJA_API_KEY precisa ser uma chave própria, com pelo menos 16 caracteres.")
-        return problemas
+            # A chave só é usada entre o agente e a loja, dentro deste servidor.
+            self.loja_api_key = secrets.token_urlsafe(32)
+            avisos.append("LOJA_API_KEY ausente ou fraca: uma chave aleatória foi gerada para esta execução.")
+        return avisos
 
     @property
     def modelo_em_uso(self) -> str:

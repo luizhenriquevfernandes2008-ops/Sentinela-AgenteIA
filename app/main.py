@@ -67,10 +67,9 @@ def criar_app(
     http_ia: httpx.Client | None = None,
 ) -> FastAPI:
     cfg = cfg or Config.do_ambiente()
-    problemas = cfg.problemas_de_publicacao()
-    if problemas:
-        # Melhor não subir do que subir aberto na internet.
-        raise RuntimeError("Configuração insegura para publicar:\n- " + "\n- ".join(problemas))
+    avisos = cfg.ajustar_para_publicar()
+    for aviso in avisos:
+        print(f"AVISO: {aviso}", flush=True)
 
     loja = Loja(cfg.banco_loja)
     controle = Controle(cfg.banco_controle, somente_mais_rigido=cfg.publico)
