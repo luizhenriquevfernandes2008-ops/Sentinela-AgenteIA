@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sentinela</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232f5bd3'/><circle cx='16' cy='16' r='7' fill='none' stroke='white' stroke-width='3'/><circle cx='16' cy='16' r='2' fill='white'/></svg>">
+  <link rel="stylesheet" href="/static/painel.css">
+</head>
+<body>
+  <header class="topo">
+    <div>
+      <h1>Sentinela</h1>
+      <p class="sub">Agente de IA com controle humano · Loja Exemplo</p>
+    </div>
+    <div class="topo-acoes">
+      <span id="modo" class="selo">…</span>
+      <span id="estado-agente" class="selo">…</span>
+      <button id="btn-pausa" class="botao perigo">Pausar agente</button>
+    </div>
+  </header>
+
+  <section class="metricas" id="metricas"></section>
+
+  <main class="grade">
+    <div class="coluna">
+      <section class="cartao">
+        <h2>Nova tarefa</h2>
+        <form id="form-tarefa">
+          <textarea id="tarefa" rows="3" placeholder="Ex.: Cancele o pedido 1003 e avise o cliente" required></textarea>
+          <div class="exemplos" id="exemplos"></div>
+          <button class="botao primario" type="submit">Enviar ao agente</button>
+          <p id="erro-tarefa" class="erro" hidden></p>
+        </form>
+      </section>
+
+      <section class="cartao" id="cartao-aprovacoes">
+        <h2>Aprovações pendentes <span id="qtd-aprovacoes" class="contador">0</span></h2>
+        <div id="aprovacoes"></div>
+      </section>
+
+      <section class="cartao">
+        <h2>Execuções</h2>
+        <div id="execucoes" class="lista"></div>
+      </section>
+    </div>
+
+    <div class="coluna">
+      <section class="cartao" id="cartao-detalhe">
+        <div class="linha-titulo">
+          <h2 id="titulo-detalhe">Linha do tempo</h2>
+          <button id="btn-cancelar-exec" class="botao pequeno" hidden>Cancelar execução</button>
+        </div>
+        <div id="detalhe"><p class="vazio">Selecione uma execução para ver cada passo do agente.</p></div>
+      </section>
+    </div>
+  </main>
+
+  <nav class="abas" role="tablist">
+    <button class="aba ativa" data-aba="controles" role="tab">Controles</button>
+    <button class="aba" data-aba="loja" role="tab">Loja (efeito das ações)</button>
+  </nav>
+
+  <section class="cartao painel-aba" id="aba-controles">
+    <div class="controles-grade">
+      <div>
+        <h3>Ferramentas</h3>
+        <div class="rolagem">
+          <table class="tabela" id="tabela-ferramentas">
+            <thead><tr><th>Ferramenta</th><th>Risco</th><th>Ativa</th><th>Exige aprovação</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Limites</h3>
+        <label class="campo">Reembolso máximo do agente (R$)
+          <input type="number" id="limite_reembolso" min="0" step="50">
+        </label>
+        <label class="campo">Máximo de passos por execução
+          <input type="number" id="max_passos" min="1" max="50">
+        </label>
+        <label class="campo">Orçamento diário de tokens
+          <input type="number" id="orcamento_tokens_dia" min="0" step="10000">
+        </label>
+        <label class="campo check">
+          <input type="checkbox" id="email_somente_clientes"> E-mails só para clientes cadastrados
+        </label>
+        <button id="btn-salvar-limites" class="botao primario">Salvar limites</button>
+        <span id="salvo" class="ok" hidden>Salvo ✓</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="cartao painel-aba" id="aba-loja" hidden>
+    <div class="linha-titulo">
+      <h3>Pedidos</h3>
+      <button id="btn-resetar-loja" class="botao pequeno">Restaurar dados de exemplo</button>
+    </div>
+    <div class="rolagem"><table class="tabela" id="tabela-pedidos"></table></div>
+    <div class="controles-grade">
+      <div>
+        <h3>Produtos</h3>
+        <div class="rolagem"><table class="tabela" id="tabela-produtos"></table></div>
+      </div>
+      <div>
+        <h3>E-mails enviados</h3>
+        <div id="lista-emails" class="lista"></div>
+        <h3>Reembolsos</h3>
+        <div class="rolagem"><table class="tabela" id="tabela-reembolsos"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="rodape">Toda ação do agente passa pelas regras e fica registrada. A API da loja está em <a href="/loja/docs">/loja/docs</a>.</footer>
+
+  <script src="/static/painel.js"></script>
+</body>
+</html>
